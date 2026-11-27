@@ -15,9 +15,11 @@ import (
 	"path"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/tessaly-dev/tessaly/internal/auth"
+	"github.com/tessaly-dev/tessaly/internal/store"
 	"github.com/tessaly-dev/tessaly/internal/version"
 )
 
@@ -44,6 +46,8 @@ type Config struct {
 	UI fs.FS
 	// Auth checks sign-in for the API.
 	Auth *auth.Auth
+	// Store holds repos and other state.
+	Store *store.Store
 }
 
 // Handler returns the HTTP handler for cfg.
@@ -58,6 +62,10 @@ func Handler(cfg Config) http.Handler {
 
 	api := http.NewServeMux()
 	api.HandleFunc("GET /api/v1/session", session)
+	repos := repoHandlers{store: cfg.Store, addMu: &sync.Mutex{}}
+	api.HandleFunc("GET /api/v1/repos", repos.list)
+	api.HandleFunc("POST /api/v1/repos", repos.add)
+	api.HandleFunc("DELETE /api/v1/repos/{id}", repos.remove)
 	// Every other API path needs a session too, so unknown paths answer 401
 	// to callers who are not signed in, and 404 to those who are.
 	mux.Handle("/api/", cfg.Auth.Require(api))

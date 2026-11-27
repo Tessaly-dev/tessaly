@@ -47,7 +47,9 @@ Platform rules:
 | `cmd/tess` | CLI entry point (binary name `tess`) |
 | `internal/auth` | Login token, sign-in sessions and the middleware that guards the API |
 | `internal/config` | Finds and creates the data folder (`~/.tessaly` or `$TESSALY_HOME`) |
+| `internal/gitx` | Runs git with fixed argv arrays, never a shell |
 | `internal/server` | HTTP server, routes and security middleware |
+| `internal/store` | SQLite database (`tessaly.db`) and its migrations in `internal/store/migrations` |
 | `internal/version` | Build version, set with `-ldflags` |
 | `web/` | React UI, embedded into the binary with `go:embed` from `web/dist` |
 | `docs/` | Developer docs |

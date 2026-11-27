@@ -1,4 +1,5 @@
 - [Home](Home)
 - [Sign in](Sign-in)
+- [Repositories](Repositories)
 - [Dev setup](Dev-setup)
 - [Threat model](Threat-model)

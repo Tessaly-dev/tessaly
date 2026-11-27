@@ -2,6 +2,8 @@
 import { useEffect, useState } from "react";
 import { authApi, type AuthApi } from "./api";
 import { fetchHealth, type Health } from "./health";
+import { Repos } from "./Repos";
+import { reposApi, type ReposApi } from "./repos";
 import { SignIn } from "./SignIn";
 
 type HealthState =
@@ -16,11 +18,13 @@ type Props = {
   auth?: AuthApi;
   // A token from the sign-in link, read once before the first render.
   initialToken?: string | null;
+  repos?: ReposApi;
 };
 
 const defaultAuth = authApi();
+const defaultRepos = reposApi();
 
-export function App({ load = fetchHealth, auth = defaultAuth, initialToken = null }: Props) {
+export function App({ load = fetchHealth, auth = defaultAuth, initialToken = null, repos = defaultRepos }: Props) {
   const [health, setHealth] = useState<HealthState>({ kind: "loading" });
   const [authState, setAuthState] = useState<AuthState>("checking");
 
@@ -69,9 +73,12 @@ export function App({ load = fetchHealth, auth = defaultAuth, initialToken = nul
       </p>
       {authState === "signedOut" && <SignIn onSignIn={signIn} />}
       {authState === "signedIn" && (
-        <button type="button" onClick={() => signOut().catch(() => undefined)}>
-          Sign out
-        </button>
+        <>
+          <Repos api={repos} />
+          <button type="button" onClick={() => signOut().catch(() => undefined)}>
+            Sign out
+          </button>
+        </>
       )}
     </main>
   );

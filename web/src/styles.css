@@ -66,3 +66,19 @@ button:disabled {
 [role="alert"] {
   color: var(--accent);
 }
+
+.repos {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.repos code {
+  overflow-wrap: anywhere;
+}
+
+.repos button {
+  padding: 0.125rem 0.5rem;
+  font-size: 0.875rem;
+}
