@@ -42,3 +42,20 @@ describe("workspacesApi", () => {
     );
   });
 });
+
+describe("workspacesApi agent calls", () => {
+  it("starts with agent and prompt", async () => {
+    const fetcher = reply(200, { id: 2, state: "running" });
+    await workspacesApi(fetcher).start(2, "aider", "fix");
+    expect(fetcher).toHaveBeenCalledWith("/api/v1/workspaces/2/start", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ agent: "aider", prompt: "fix" }),
+    });
+  });
+
+  it("reads output as text", async () => {
+    const fetcher = vi.fn(async () => new Response("hello\n", { status: 200 })) as unknown as typeof fetch;
+    await expect(workspacesApi(fetcher).output(2)).resolves.toBe("hello\n");
+  });
+});

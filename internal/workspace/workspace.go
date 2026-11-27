@@ -36,16 +36,27 @@ var ErrConflict = errors.New("conflict")
 
 // Manager creates and archives workspaces.
 type Manager struct {
-	// archiveMu stops two archive requests for one workspace racing on git.
-	archiveMu sync.Mutex
-	store     *store.Store
-	// root is the folder that holds every worktree, ~/.tessaly/worktrees.
+	store *store.Store
+	// home is the data folder, ~/.tessaly.
+	home string
+	// root is the folder that holds every worktree, home/worktrees.
 	root string
+
+	// runMu guards runs and orders state changes of archive, start and
+	// agent exit, so they cannot race.
+	runMu sync.Mutex
+	runs  map[int64]*run
 }
 
-// NewManager returns a Manager that keeps worktrees under root.
-func NewManager(s *store.Store, root string) *Manager {
-	return &Manager{store: s, root: root}
+// NewManager returns a Manager that keeps worktrees and transcripts in the
+// data folder home.
+func NewManager(s *store.Store, home string) *Manager {
+	return &Manager{
+		store: s,
+		home:  home,
+		root:  filepath.Join(home, "worktrees"),
+		runs:  make(map[int64]*run),
+	}
 }
 
 // ValidSlug reports whether slug can name a workspace and its branch.
@@ -101,8 +112,8 @@ func (m *Manager) Create(ctx context.Context, repo store.Repo, slug string) (sto
 // Archive removes the workspace's worktree and keeps its branch. It refuses a
 // worktree with uncommitted or untracked files.
 func (m *Manager) Archive(ctx context.Context, repo store.Repo, ws store.Workspace) (store.Workspace, error) {
-	m.archiveMu.Lock()
-	defer m.archiveMu.Unlock()
+	m.runMu.Lock()
+	defer m.runMu.Unlock()
 	// Re-read under the lock, in case another request changed it.
 	ws, err := m.store.Workspace(ctx, ws.ID)
 	if err != nil {
@@ -126,18 +137,24 @@ func (m *Manager) Archive(ctx context.Context, repo store.Repo, ws store.Workspa
 	return m.move(ctx, ws, Archived, "")
 }
 
-// Recover marks workspaces left in Creating, because tess stopped while
-// making them, as Failed. Call it once at startup, before serving requests.
+// Recover fixes workspaces that tess left behind when it stopped: Creating
+// becomes Failed and Running becomes Exited. Call it once at startup, before
+// serving requests.
 func (m *Manager) Recover(ctx context.Context) error {
 	list, err := m.store.Workspaces(ctx)
 	if err != nil {
 		return err
 	}
 	for _, ws := range list {
-		if State(ws.State) == Creating {
-			if _, err := m.move(ctx, ws, Failed, "tess stopped while creating this workspace"); err != nil {
-				return err
-			}
+		var err error
+		switch State(ws.State) {
+		case Creating:
+			_, err = m.move(ctx, ws, Failed, "tess stopped while creating this workspace")
+		case Running:
+			_, err = m.move(ctx, ws, Exited, "tess stopped while the agent was running")
+		}
+		if err != nil {
+			return err
 		}
 	}
 	return nil

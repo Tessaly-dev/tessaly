@@ -21,9 +21,14 @@ type Workspace struct {
 	State     string    `json:"state"`
 	Error     string    `json:"error,omitempty"`
 	CreatedAt time.Time `json:"createdAt"`
+	// Agent names the agent that last ran here, if any.
+	Agent string `json:"agent,omitempty"`
+	// ExitCode is how the last agent run ended. It is nil while one runs or
+	// before the first run.
+	ExitCode *int `json:"exitCode,omitempty"`
 }
 
-const workspaceCols = "id, repo_id, slug, branch, base, path, state, error, created_at"
+const workspaceCols = "id, repo_id, slug, branch, base, path, state, error, created_at, agent, exit_code"
 
 // AddWorkspace stores w and sets its ID and CreatedAt. It returns ErrExists
 // if the repo already has a workspace with that slug, or the path is taken.
@@ -47,6 +52,21 @@ func (s *Store) SetWorkspaceState(ctx context.Context, id int64, state, errText 
 	res, err := s.db.ExecContext(ctx, "UPDATE workspaces SET state = ?, error = ? WHERE id = ?", state, errText, id)
 	if err != nil {
 		return fmt.Errorf("set workspace state: %w", err)
+	}
+	if n, err := res.RowsAffected(); err != nil {
+		return err
+	} else if n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// SetWorkspaceRun stores the agent and exit code of the latest run. A nil
+// exitCode means the run is still going.
+func (s *Store) SetWorkspaceRun(ctx context.Context, id int64, agent string, exitCode *int) error {
+	res, err := s.db.ExecContext(ctx, "UPDATE workspaces SET agent = ?, exit_code = ? WHERE id = ?", agent, exitCode, id)
+	if err != nil {
+		return fmt.Errorf("set workspace run: %w", err)
 	}
 	if n, err := res.RowsAffected(); err != nil {
 		return err
@@ -88,8 +108,13 @@ func (s *Store) Workspaces(ctx context.Context) ([]Workspace, error) {
 func scanWorkspace(sc scanner) (Workspace, error) {
 	var w Workspace
 	var created string
-	if err := sc.Scan(&w.ID, &w.RepoID, &w.Slug, &w.Branch, &w.Base, &w.Path, &w.State, &w.Error, &created); err != nil {
+	var exit sql.NullInt64
+	if err := sc.Scan(&w.ID, &w.RepoID, &w.Slug, &w.Branch, &w.Base, &w.Path, &w.State, &w.Error, &created, &w.Agent, &exit); err != nil {
 		return Workspace{}, err
+	}
+	if exit.Valid {
+		code := int(exit.Int64)
+		w.ExitCode = &code
 	}
 	t, err := time.Parse(time.RFC3339, created)
 	if err != nil {

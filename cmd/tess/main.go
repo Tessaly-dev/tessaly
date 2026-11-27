@@ -14,6 +14,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"syscall"
+	"time"
 
 	"github.com/tessaly-dev/tessaly/internal/auth"
 	"github.com/tessaly-dev/tessaly/internal/config"
@@ -117,7 +118,13 @@ func serve(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	}
 	defer func() { _ = db.Close() }()
 
-	workspaces := workspace.NewManager(db, filepath.Join(home, "worktrees"))
+	settings, err := config.Load(filepath.Join(home, "config.toml"))
+	if err != nil {
+		fmt.Fprintf(stderr, "tess serve: %v\n", err)
+		return 1
+	}
+
+	workspaces := workspace.NewManager(db, home)
 	if err := workspaces.Recover(startCtx); err != nil {
 		fmt.Fprintf(stderr, "tess serve: %v\n", err)
 		return 1
@@ -129,7 +136,15 @@ func serve(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 		Auth:       auth.New(token),
 		Store:      db,
 		Workspaces: workspaces,
+		Agents:     settings.Agents,
 	}
+	// Agents must not outlive the daemon. Stop them once serving ends,
+	// whether by Ctrl-C or an error.
+	defer func() {
+		stopCtx, cancel := context.WithTimeout(context.Background(), workspace.StopGrace+5*time.Second)
+		defer cancel()
+		workspaces.StopAll(stopCtx)
+	}()
 	if err := server.Serve(ctx, ln, server.Handler(cfg)); err != nil {
 		fmt.Fprintf(stderr, "tess serve: %v\n", err)
 		return 1

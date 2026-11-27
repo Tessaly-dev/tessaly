@@ -8,7 +8,9 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/tessaly-dev/tessaly/internal/gitx"
 	"github.com/tessaly-dev/tessaly/internal/store"
@@ -47,16 +49,20 @@ func setup(t *testing.T) (*Manager, store.Repo) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return NewManager(s, filepath.Join(dir, "worktrees")), repo
+	return NewManager(s, dir), repo
 }
 
 func TestTransitions(t *testing.T) {
-	all := []State{Creating, Ready, Archived, Failed}
+	all := []State{Creating, Ready, Running, Exited, Archived, Failed}
 	allowed := map[[2]State]bool{
 		{Creating, Ready}:  true,
 		{Creating, Failed}: true,
+		{Ready, Running}:   true,
 		{Ready, Archived}:  true,
 		{Ready, Failed}:    true,
+		{Running, Exited}:  true,
+		{Exited, Running}:  true,
+		{Exited, Archived}: true,
 		{Failed, Archived}: true,
 	}
 	for _, from := range all {
@@ -218,7 +224,7 @@ func TestArchiveRefusesDirtyWorktree(t *testing.T) {
 }
 
 func TestWorktreePathStaysInRoot(t *testing.T) {
-	m := NewManager(nil, "/data/worktrees")
+	m := NewManager(nil, "/data")
 	for _, tt := range []struct{ repo, slug string }{{"..", "x"}, {"app", ".."}, {"../..", "etc"}, {"", ""}} {
 		if p, err := m.worktreePath(tt.repo, tt.slug); err == nil {
 			t.Errorf("worktreePath(%q, %q) = %q, want error", tt.repo, tt.slug, p)
@@ -240,6 +246,10 @@ func TestRecover(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	running := store.Workspace{RepoID: repo.ID, Slug: "was-running", Branch: "tess/was-running", Base: "x", Path: "/nowhere/run", State: string(Running)}
+	if err := m.store.AddWorkspace(ctx, &running); err != nil {
+		t.Fatal(err)
+	}
 
 	if err := m.Recover(ctx); err != nil {
 		t.Fatal(err)
@@ -248,8 +258,149 @@ func TestRecover(t *testing.T) {
 	if got.State != string(Failed) || got.Error == "" {
 		t.Errorf("stuck = %+v, want failed with a reason", got)
 	}
+	got, _ = m.store.Workspace(ctx, running.ID)
+	if got.State != string(Exited) || got.Error == "" {
+		t.Errorf("was-running = %+v, want exited with a reason", got)
+	}
 	got, _ = m.store.Workspace(ctx, ready.ID)
 	if got.State != string(Ready) {
 		t.Errorf("ready workspace changed to %s", got.State)
+	}
+}
+
+// startAgent starts argv in a new ready workspace.
+func startAgent(t *testing.T, m *Manager, repo store.Repo, slug string, argv ...string) store.Workspace {
+	t.Helper()
+	ws, err := m.Create(context.Background(), repo, slug)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ws, err = m.Start(context.Background(), ws, "test", argv)
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	return ws
+}
+
+// waitExited waits until the agent's exit is stored.
+func waitExited(t *testing.T, m *Manager, id int64) store.Workspace {
+	t.Helper()
+	m.runMu.Lock()
+	r := m.runs[id]
+	m.runMu.Unlock()
+	if r != nil {
+		select {
+		case <-r.recorded:
+		case <-time.After(10 * time.Second):
+			t.Fatal("agent did not exit")
+		}
+	}
+	ws, err := m.store.Workspace(context.Background(), id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return ws
+}
+
+func TestStartRunsAgentInWorktree(t *testing.T) {
+	m, repo := setup(t)
+	t.Setenv("TESSALY_HOME", "/should/not/leak")
+	t.Setenv("GIT_DIR", "/should/not/leak")
+	ws := startAgent(t, m, repo, "run", "sh", "-c", `pwd; echo "ws=$TESSALY_WORKSPACE home=$TESSALY_HOME git=$GIT_DIR"; exit 7`)
+	if ws.State != string(Running) || ws.Agent != "test" {
+		t.Errorf("ws = %+v, want running with agent test", ws)
+	}
+
+	ws = waitExited(t, m, ws.ID)
+	if ws.State != string(Exited) || ws.ExitCode == nil || *ws.ExitCode != 7 {
+		t.Fatalf("ws = %+v, want exited with code 7", ws)
+	}
+
+	transcript, err := os.ReadFile(m.TranscriptPath(ws.ID))
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := string(transcript)
+	for _, want := range []string{ws.Path, "ws=run home= git=", "starting test", "exited with code 7"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("transcript lacks %q:\n%s", want, out)
+		}
+	}
+	info, err := os.Stat(m.TranscriptPath(ws.ID))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if perm := info.Mode().Perm(); perm != 0o600 {
+		t.Errorf("transcript mode = %04o, want 0600", perm)
+	}
+
+	// An exited workspace can run again, and then be archived.
+	if _, err := m.Start(context.Background(), ws, "test", []string{"true"}); err != nil {
+		t.Fatalf("restart: %v", err)
+	}
+	ws = waitExited(t, m, ws.ID)
+	if _, err := m.Archive(context.Background(), repo, ws); err != nil {
+		t.Errorf("archive after exit: %v", err)
+	}
+}
+
+func TestStartRefusesWhileRunning(t *testing.T) {
+	m, repo := setup(t)
+	ws := startAgent(t, m, repo, "busy", "sleep", "60")
+	defer m.StopAll(context.Background())
+
+	if _, err := m.Start(context.Background(), ws, "test", []string{"true"}); !errors.Is(err, ErrConflict) {
+		t.Errorf("second start: err = %v, want ErrConflict", err)
+	}
+	if _, err := m.Archive(context.Background(), repo, ws); !errors.Is(err, ErrConflict) {
+		t.Errorf("archive while running: err = %v, want ErrConflict", err)
+	}
+}
+
+func TestStartMissingProgramKeepsState(t *testing.T) {
+	m, repo := setup(t)
+	ws, err := m.Create(context.Background(), repo, "missing")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := m.Start(context.Background(), ws, "test", []string{"/no/such/agent"}); err == nil {
+		t.Fatal("Start of a missing program succeeded")
+	}
+	got, _ := m.store.Workspace(context.Background(), ws.ID)
+	if got.State != string(Ready) {
+		t.Errorf("state = %s, want ready", got.State)
+	}
+}
+
+func TestStopAndStopAll(t *testing.T) {
+	m, repo := setup(t)
+	a := startAgent(t, m, repo, "a", "sleep", "60")
+	b := startAgent(t, m, repo, "b", "sleep", "60")
+
+	if err := m.Stop(context.Background(), a.ID); err != nil {
+		t.Fatal(err)
+	}
+	if got := waitExited(t, m, a.ID); got.State != string(Exited) {
+		t.Errorf("a = %s, want exited", got.State)
+	}
+	if err := m.Stop(context.Background(), a.ID); !errors.Is(err, ErrNotRunning) {
+		t.Errorf("stop twice: err = %v, want ErrNotRunning", err)
+	}
+
+	m.StopAll(context.Background())
+	if got := waitExited(t, m, b.ID); got.State != string(Exited) {
+		t.Errorf("b = %s, want exited", got.State)
+	}
+	if m.Process(b.ID) != nil {
+		t.Error("process still tracked after StopAll")
+	}
+}
+
+func TestAgentEnv(t *testing.T) {
+	ws := store.Workspace{Slug: "fix", Branch: "tess/fix"}
+	got := agentEnv([]string{"HOME=/h", "TESSALY_HOME=/t", "GIT_DIR=/g", "TERM=dumb", "ANTHROPIC_API_KEY=k"}, ws)
+	want := []string{"HOME=/h", "ANTHROPIC_API_KEY=k", "TERM=xterm-256color", "TESSALY_WORKSPACE=fix", "TESSALY_BRANCH=tess/fix"}
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Errorf("agentEnv = %v, want %v", got, want)
 	}
 }

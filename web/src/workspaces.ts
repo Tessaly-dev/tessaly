@@ -11,12 +11,20 @@ export type Workspace = {
   state: string;
   error?: string;
   createdAt: string;
+  agent?: string;
+  exitCode?: number;
 };
+
+export type Agent = { name: string; command: string[] };
 
 export type WorkspacesApi = {
   list(): Promise<Workspace[]>;
   create(repoId: number, name: string): Promise<Workspace>;
   archive(id: number): Promise<Workspace>;
+  agents(): Promise<Agent[]>;
+  start(id: number, agent: string, prompt: string): Promise<Workspace>;
+  stop(id: number): Promise<Workspace>;
+  output(id: number): Promise<string>;
 };
 
 export function workspacesApi(fetcher: typeof fetch = fetch): WorkspacesApi {
@@ -41,6 +49,34 @@ export function workspacesApi(fetcher: typeof fetch = fetch): WorkspacesApi {
       const res = await fetcher(`/api/v1/workspaces/${encodeURIComponent(String(id))}/archive`, { method: "POST" });
       if (!res.ok) throw await errorFrom(res, "archiving the workspace");
       return (await res.json()) as Workspace;
+    },
+
+    async agents() {
+      const res = await fetcher("/api/v1/agents", { headers: { Accept: "application/json" } });
+      if (!res.ok) throw await errorFrom(res, "listing agents");
+      return (await res.json()) as Agent[];
+    },
+
+    async start(id: number, agent: string, prompt: string) {
+      const res = await fetcher(`/api/v1/workspaces/${encodeURIComponent(String(id))}/start`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ agent, prompt }),
+      });
+      if (!res.ok) throw await errorFrom(res, "starting the agent");
+      return (await res.json()) as Workspace;
+    },
+
+    async stop(id: number) {
+      const res = await fetcher(`/api/v1/workspaces/${encodeURIComponent(String(id))}/stop`, { method: "POST" });
+      if (!res.ok) throw await errorFrom(res, "stopping the agent");
+      return (await res.json()) as Workspace;
+    },
+
+    async output(id: number) {
+      const res = await fetcher(`/api/v1/workspaces/${encodeURIComponent(String(id))}/output`);
+      if (!res.ok) throw await errorFrom(res, "reading output");
+      return res.text();
     },
   };
 }

@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/tessaly-dev/tessaly/internal/auth"
+	"github.com/tessaly-dev/tessaly/internal/config"
 	"github.com/tessaly-dev/tessaly/internal/store"
 	"github.com/tessaly-dev/tessaly/internal/version"
 	"github.com/tessaly-dev/tessaly/internal/workspace"
@@ -52,7 +53,11 @@ func testConfig(t *testing.T, port int, ui fstest.MapFS) Config {
 		UI:         ui,
 		Auth:       auth.New(testToken),
 		Store:      db,
-		Workspaces: workspace.NewManager(db, filepath.Join(t.TempDir(), "worktrees")),
+		Workspaces: workspace.NewManager(db, t.TempDir()),
+		Agents: map[string]config.Agent{
+			"echo":  {Command: []string{"printf", "said: %s\\n", "{prompt}"}},
+			"sleep": {Command: []string{"sleep", "60"}},
+		},
 	}
 }
 

@@ -1,0 +1,74 @@
+// SPDX-License-Identifier: Apache-2.0
+
+package config
+
+import (
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+)
+
+func writeConfig(t *testing.T, body string, mode os.FileMode) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "config.toml")
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(path, mode); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+func TestLoadMissingFile(t *testing.T) {
+	cfg, err := Load(filepath.Join(t.TempDir(), "none.toml"))
+	if err != nil || len(cfg.Agents) != 0 {
+		t.Errorf("Load(missing) = %+v, %v; want empty config", cfg, err)
+	}
+}
+
+func TestLoadAgents(t *testing.T) {
+	path := writeConfig(t, `
+[agents.aider]
+command = ["aider", "--message", "{prompt}"]
+
+[agents.shell-bot]
+command = ["/usr/local/bin/bot"]
+`, 0o644)
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := cfg.Agents["aider"].Command; len(got) != 3 || got[2] != "{prompt}" {
+		t.Errorf("aider command = %q", got)
+	}
+	if _, ok := cfg.Agents["shell-bot"]; !ok {
+		t.Error("shell-bot missing")
+	}
+}
+
+func TestLoadRejects(t *testing.T) {
+	tests := []struct {
+		name, body string
+		mode       os.FileMode
+		wantErr    string
+	}{
+		{"writable by others", "", 0o666, "other users can change it"},
+		{"writable by group", "", 0o620, "other users can change it"},
+		{"bad toml", "agents = [", 0o600, "read"},
+		{"unknown key", "[agents.x]\ncommand = [\"x\"]\nshell = true\n", 0o600, "unknown setting"},
+		{"bad agent name", "[agents.\"My Agent\"]\ncommand = [\"x\"]\n", 0o600, "agent name"},
+		{"empty command", "[agents.x]\ncommand = []\n", 0o600, "needs a command"},
+		{"blank program", "[agents.x]\ncommand = [\"\"]\n", 0o600, "needs a command"},
+		{"string command", "[agents.x]\ncommand = \"rm -rf ~\"\n", 0o600, "read"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := Load(writeConfig(t, tt.body, tt.mode))
+			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+				t.Errorf("err = %v, want it to contain %q", err, tt.wantErr)
+			}
+		})
+	}
+}

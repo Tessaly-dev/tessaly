@@ -45,9 +45,11 @@ Platform rules:
 | Path | What lives there |
 | --- | --- |
 | `cmd/tess` | CLI entry point (binary name `tess`) |
+| `internal/agent` | Adapters that turn a prompt into an agent argv. They never run anything |
 | `internal/auth` | Login token, sign-in sessions and the middleware that guards the API |
-| `internal/config` | Finds and creates the data folder (`~/.tessaly` or `$TESSALY_HOME`) |
+| `internal/config` | Finds the data folder (`~/.tessaly` or `$TESSALY_HOME`) and loads `config.toml` |
 | `internal/gitx` | Runs git with fixed argv arrays, never a shell |
+| `internal/ptyx` | Runs a program under a pseudo-terminal, keeps its recent output and stops its process group |
 | `internal/server` | HTTP server, routes and security middleware |
 | `internal/store` | SQLite database (`tessaly.db`) and its migrations in `internal/store/migrations` |
 | `internal/workspace` | Workspace life cycle: branch, worktree and the state table in `state.go` |

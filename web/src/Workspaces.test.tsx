@@ -28,6 +28,16 @@ function fakeApi(): WorkspacesApi & { created: [number, string][] } {
       list = list.map((w) => (w.id === id ? { ...w, state: "archived" } : w));
       return list.find((w) => w.id === id)!;
     },
+    agents: async () => [{ name: "aider", command: ["aider", "{prompt}"] }],
+    start: async (id) => {
+      list = list.map((w) => (w.id === id ? { ...w, state: "running" } : w));
+      return list.find((w) => w.id === id)!;
+    },
+    stop: async (id) => {
+      list = list.map((w) => (w.id === id ? { ...w, state: "exited", exitCode: 0 } : w));
+      return list.find((w) => w.id === id)!;
+    },
+    output: async () => "agent says hi",
   };
 }
 
@@ -62,5 +72,23 @@ describe("Workspaces", () => {
       await screen.findByText("dup");
     }
     expect((await screen.findByRole("alert")).textContent).toBe("a branch with this name already exists");
+  });
+});
+
+describe("Workspaces agent panel", () => {
+  it("opens the agent panel and runs an agent", async () => {
+    const api = fakeApi();
+    render(<Workspaces repos={repos} api={api} />);
+    fireEvent.change(await screen.findByLabelText("Workspace name"), { target: { value: "task" } });
+    fireEvent.click(screen.getByRole("button", { name: "Create workspace" }));
+
+    fireEvent.click(await screen.findByRole("button", { name: "Agent for task" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Start agent" }));
+    expect(await screen.findByText("running")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Archive task" })).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Stop agent" }));
+    expect(await screen.findByText("exited")).toBeTruthy();
+    expect(await screen.findByText("Last run exited with code 0.")).toBeTruthy();
   });
 });
