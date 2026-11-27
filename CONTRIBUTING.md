@@ -48,7 +48,9 @@ Platform rules:
 | `internal/agent` | Adapters that turn a prompt into an agent argv. They never run anything |
 | `internal/auth` | Login token, passkeys (WebAuthn), sign-in sessions and the middleware that guards the API |
 | `internal/control` | The host-only control socket and daemon lock behind `tess auth reset` |
-| `internal/config` | Finds the data folder (`~/.tessaly` or `$TESSALY_HOME`) and loads `config.toml` |
+| `internal/checks` | Keeps the CI check status of each workspace's pull request, asking the forge every few minutes |
+| `internal/config` | Finds the data folder (`~/.tessaly` or `$TESSALY_HOME`) and loads `config.toml`, including agents and `public_url` |
+| `internal/forge` | Opens pull requests and reads their checks on GitHub through the `gh` CLI |
 | `internal/gitx` | Runs git with fixed argv arrays, never a shell |
 | `internal/ptyx` | Runs a program under a pseudo-terminal, keeps its recent output and stops its process group |
 | `internal/server` | HTTP server, routes and security middleware |
@@ -122,8 +124,8 @@ Test agents are plain commands such as `sh` and `cat`, so the tests need no real
 - [ ] User input (paths, flags, request data) is validated before use.
 - [ ] File paths are resolved and checked against their allowed root.
 - [ ] New HTTP routes go through the existing middleware (Host check, cross-origin check and security headers) and reject methods they do not handle.
-- [ ] New API routes sit behind sign-in (`auth.Require`). Only sign-in and sign-out are open.
-- [ ] The server still binds to `127.0.0.1` only.
+- [ ] New API routes sit behind sign-in (`auth.Require`), and `TestAPINeedsSignIn` lists them. Only the sign-in routes (`/api/v1/login`, passkey sign-in) and sign-out are open.
+- [ ] The server still binds to `127.0.0.1` by default, and the Host check accepts only `127.0.0.1`, `localhost` and `public_url`.
 - [ ] No secrets or tokens written to logs.
 - [ ] New files and directories use 0600 and 0700 permissions.
 - [ ] New dependencies are pinned and justified in the PR description. New GitHub Actions are pinned to a full commit SHA.

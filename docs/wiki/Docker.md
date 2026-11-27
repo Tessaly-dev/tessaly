@@ -1,6 +1,6 @@
 # Docker
 
-Each release pushes a `tess` image for linux/amd64 and linux/arm64 to `ghcr.io/tessaly-dev/tessaly`. Tags are the version, such as `v0.1.0`, and `latest` for the newest full release.
+Each release pushes a `tess` image for linux/amd64 and linux/arm64 to `ghcr.io/tessaly-dev/tessaly`. There is no release yet, so the image is not published. Tags are the version, such as `v0.1.0`, and `latest` for the newest full release.
 
 ## Run it
 
@@ -13,7 +13,7 @@ docker run -d --name tess \
 docker exec tess cat /data/token
 ```
 
-Open <http://localhost:7777> and sign in with the token, then add a passkey on the Passkeys tab. Passkeys work only on `localhost`.
+Open <http://localhost:7777> and sign in with the token, then add a passkey on the Passkeys tab. Passkeys work on `localhost`, and on an `https` `public_url` (see [Remote access](Remote-access)).
 
 - Publish the port on `127.0.0.1` only, as above. Inside the container tess listens on `0.0.0.0` so Docker can reach it, and the `-p 127.0.0.1:` part keeps it off your network. For remote access, use an SSH tunnel, or set `public_url` in `/data/config.toml` for a reverse proxy. See [Remote access](Remote-access).
 - Keep the host port the same as the container port. tess only accepts requests for `127.0.0.1:<port>`, `localhost:<port>` and the `public_url` host, so `-p 127.0.0.1:8080:7777` gets `403 forbidden host`. To use another port, change both: `-p 127.0.0.1:8080:8080` and add `serve --listen 0.0.0.0 --port 8080` at the end of `docker run`.
