@@ -1,5 +1,6 @@
 - [Home](Home)
 - [Sign in](Sign-in)
 - [Repositories](Repositories)
+- [Workspaces](Workspaces)
 - [Dev setup](Dev-setup)
 - [Threat model](Threat-model)

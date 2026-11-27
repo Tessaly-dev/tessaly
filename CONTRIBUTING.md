@@ -50,6 +50,7 @@ Platform rules:
 | `internal/gitx` | Runs git with fixed argv arrays, never a shell |
 | `internal/server` | HTTP server, routes and security middleware |
 | `internal/store` | SQLite database (`tessaly.db`) and its migrations in `internal/store/migrations` |
+| `internal/workspace` | Workspace life cycle: branch, worktree and the state table in `state.go` |
 | `internal/version` | Build version, set with `-ldflags` |
 | `web/` | React UI, embedded into the binary with `go:embed` from `web/dist` |
 | `docs/` | Developer docs |

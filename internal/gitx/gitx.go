@@ -85,3 +85,63 @@ func env(environ []string) []string {
 	}
 	return out
 }
+
+// Head returns the commit hash that HEAD points at in repo.
+func Head(ctx context.Context, repo string) (string, error) {
+	return run(ctx, repo, "rev-parse", "--verify", "--quiet", "HEAD^{commit}")
+}
+
+// BranchExists reports whether the local branch exists in repo.
+func BranchExists(ctx context.Context, repo, branch string) (bool, error) {
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	// show-ref exits 1 when the ref is missing and 128 or more on real errors.
+	cmd := exec.CommandContext(ctx, "git", "show-ref", "--verify", "--quiet", "refs/heads/"+branch) // #nosec G204 -- fixed argv, no shell.
+	cmd.Dir = repo
+	cmd.Env = append(env(os.Environ()), "GIT_TERMINAL_PROMPT=0")
+	err := cmd.Run()
+	var exit *exec.ExitError
+	switch {
+	case err == nil:
+		return true, nil
+	case errors.As(err, &exit) && exit.ExitCode() == 1:
+		return false, nil
+	default:
+		return false, fmt.Errorf("git show-ref: %w", err)
+	}
+}
+
+// AddWorktree creates a new branch at base and checks it out in a new
+// worktree at path. path must not exist yet, or must be an empty folder.
+func AddWorktree(ctx context.Context, repo, path, branch, base string) error {
+	_, err := run(ctx, repo, "worktree", "add", "--quiet", "-b", branch, "--", path, base)
+	return err
+}
+
+// ErrDirtyWorktree means the worktree has changes git would lose on removal.
+var ErrDirtyWorktree = errors.New("the worktree has uncommitted or untracked files")
+
+// RemoveWorktree removes the worktree at path and keeps its branch. It never
+// forces: a worktree with uncommitted or untracked files returns
+// ErrDirtyWorktree and stays as it is.
+func RemoveWorktree(ctx context.Context, repo, path string) error {
+	_, err := run(ctx, repo, "worktree", "remove", "--", path)
+	if err != nil && strings.Contains(err.Error(), "modified or untracked files") {
+		return ErrDirtyWorktree
+	}
+	return err
+}
+
+// HasWorktree reports whether path is one of repo's linked worktrees.
+func HasWorktree(ctx context.Context, repo, path string) (bool, error) {
+	out, err := run(ctx, repo, "worktree", "list", "--porcelain", "-z")
+	if err != nil {
+		return false, err
+	}
+	for _, field := range strings.Split(out, "\x00") {
+		if p, ok := strings.CutPrefix(field, "worktree "); ok && p == path {
+			return true, nil
+		}
+	}
+	return false, nil
+}
