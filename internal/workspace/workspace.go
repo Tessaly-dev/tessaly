@@ -47,6 +47,9 @@ type Manager struct {
 	// agent exit, so they cannot race.
 	runMu sync.Mutex
 	runs  map[int64]*run
+	// shipping holds the workspaces that are committing, pushing or
+	// opening a pull request. Guarded by runMu.
+	shipping map[int64]bool
 	// maxRuns caps how many agents run at once.
 	maxRuns int
 	// maxTranscript caps the size of one transcript file.
@@ -64,6 +67,8 @@ func NewManager(s *store.Store, home string) *Manager {
 		home:  home,
 		root:  filepath.Join(home, "worktrees"),
 		runs:  make(map[int64]*run),
+
+		shipping: make(map[int64]bool),
 
 		maxRuns:       MaxRunning,
 		maxTranscript: MaxTranscript,
@@ -133,6 +138,9 @@ func (m *Manager) Archive(ctx context.Context, repo store.Repo, ws store.Workspa
 	}
 	if err := checkMove(State(ws.State), Archived); err != nil {
 		return ws, fmt.Errorf("%w: %w", ErrConflict, err)
+	}
+	if m.shipping[ws.ID] {
+		return ws, fmt.Errorf("%w: the workspace is shipping", ErrConflict)
 	}
 	var ok bool
 	// Only remove a path git lists as this repo's worktree. A failed create

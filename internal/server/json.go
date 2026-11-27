@@ -13,11 +13,16 @@ import (
 // caps the body size and rejects unknown fields. On failure it writes a 4xx
 // reply and returns false.
 func readJSON(w http.ResponseWriter, r *http.Request, v any) bool {
+	return readJSONMax(w, r, v, maxJSONBody)
+}
+
+// readJSONMax is readJSON with a body cap of limit bytes.
+func readJSONMax(w http.ResponseWriter, r *http.Request, v any, limit int64) bool {
 	if ct := r.Header.Get("Content-Type"); !strings.HasPrefix(ct, "application/json") {
 		writeError(w, http.StatusUnsupportedMediaType, "send Content-Type: application/json")
 		return false
 	}
-	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxJSONBody))
+	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, limit))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(v); err != nil {
 		writeError(w, http.StatusBadRequest, "bad request body")

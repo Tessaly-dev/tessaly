@@ -9,10 +9,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -24,7 +27,26 @@ var ErrNotRepo = errors.New("not the top folder of a git repository")
 
 // run runs git with args in dir and returns trimmed stdout.
 func run(ctx context.Context, dir string, args ...string) (string, error) {
-	ctx, cancel := context.WithTimeout(ctx, timeout)
+	return runOpts(ctx, dir, opts{}, args...)
+}
+
+// opts changes how runOpts runs git.
+type opts struct {
+	// timeout replaces the default timeout when set.
+	timeout time.Duration
+	// stdin feeds git's standard input.
+	stdin io.Reader
+}
+
+// runOpts runs git like run, with o applied. Git always runs in a new
+// session without a controlling terminal, so ssh or a credential helper
+// fails at once instead of asking for a password in tess serve's terminal.
+func runOpts(ctx context.Context, dir string, o opts, args ...string) (string, error) {
+	limit := timeout
+	if o.timeout > 0 {
+		limit = o.timeout
+	}
+	ctx, cancel := context.WithTimeout(ctx, limit)
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, "git", args...) // #nosec G204 -- fixed argv, no shell.
@@ -33,13 +55,24 @@ func run(ctx context.Context, dir string, args ...string) (string, error) {
 		"GIT_TERMINAL_PROMPT=0", // Never wait for a password on a terminal.
 		"GIT_OPTIONAL_LOCKS=0",  // Read commands must not take index locks.
 	)
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+	cmd.Stdin = o.stdin
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
-		return "", fmt.Errorf("git %s: %w: %s", args[0], err, strings.TrimSpace(stderr.String()))
+		return "", fmt.Errorf("git %s: %w: %s", args[0], err, Redact(strings.TrimSpace(stderr.String())))
 	}
 	return strings.TrimSpace(stdout.String()), nil
+}
+
+// userinfoRE matches the user and password part of a URL, such as
+// "https://user:token@host".
+var userinfoRE = regexp.MustCompile(`://[^/@\s]+@`)
+
+// Redact hides credentials that a remote URL in git or gh output may carry.
+func Redact(text string) string {
+	return userinfoRE.ReplaceAllString(text, "://***@")
 }
 
 // RepoRoot checks that dir is the top folder of a non-bare git work tree and

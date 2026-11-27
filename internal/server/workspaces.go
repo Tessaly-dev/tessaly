@@ -6,7 +6,9 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"strings"
 
+	"github.com/tessaly-dev/tessaly/internal/forge"
 	"github.com/tessaly-dev/tessaly/internal/gitx"
 	"github.com/tessaly-dev/tessaly/internal/store"
 	"github.com/tessaly-dev/tessaly/internal/workspace"
@@ -15,6 +17,7 @@ import (
 type workspaceHandlers struct {
 	store   *store.Store
 	manager *workspace.Manager
+	forge   forge.Forge
 }
 
 // workspaceView is a workspace as the list shows it, with live state that
@@ -118,6 +121,48 @@ func (h workspaceHandlers) diff(w http.ResponseWriter, r *http.Request) {
 		Patch     string `json:"patch"`
 		Truncated bool   `json:"truncated"`
 	}{patch, truncated})
+}
+
+// maxShipError caps the git or gh message a failed ship returns.
+const maxShipError = 1000
+
+// ship commits the workspace's changes, pushes its branch and opens a pull
+// request, or pushes new commits to the one already open.
+func (h workspaceHandlers) ship(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Title string `json:"title"`
+		Body  string `json:"body"`
+	}
+	ws, ok := h.find(w, r)
+	// JSON escapes can make the body several times longer than the text.
+	if !ok || !readJSONMax(w, r, &body, 4*workspace.MaxBody) {
+		return
+	}
+	ws, err := h.manager.Ship(r.Context(), ws.ID, body.Title, body.Body, h.forge)
+	var shipErr *workspace.ShipError
+	switch {
+	case errors.Is(err, workspace.ErrBadTitle), errors.Is(err, workspace.ErrBodyTooLong):
+		writeError(w, http.StatusBadRequest, err.Error())
+	case errors.Is(err, workspace.ErrNothingToShip):
+		writeError(w, http.StatusConflict, err.Error())
+	case errors.Is(err, workspace.ErrConflict):
+		writeError(w, http.StatusConflict, strings.TrimPrefix(err.Error(), workspace.ErrConflict.Error()+": "))
+	case errors.As(err, &shipErr):
+		// The git or gh message says what to fix, such as signing in to
+		// gh. Credentials in it are already hidden.
+		writeError(w, http.StatusBadGateway, truncate(shipErr.Error(), maxShipError))
+	case err != nil:
+		serverError(w, err)
+	default:
+		writeJSON(w, http.StatusOK, ws)
+	}
+}
+
+func truncate(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	return strings.ToValidUTF8(s[:n], "") + "..."
 }
 
 // find loads the workspace named by the {id} path value, or replies 404.

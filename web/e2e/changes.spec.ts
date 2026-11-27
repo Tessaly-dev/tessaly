@@ -25,6 +25,7 @@ test("review a workspace's changes", async ({ page }) => {
   await page.getByRole("tab", { name: "Home" }).click();
   await page.getByLabel("Workspace name").fill("add-readme");
   await page.getByRole("button", { name: "Create workspace" }).click();
+  await expect(page.getByRole("region", { name: "Workspace" }).getByRole("heading", { name: "add-readme" })).toBeVisible();
 
   const changes = page.getByRole("region", { name: "Changes" });
   await changes.getByRole("button", { name: "Review changes" }).click();

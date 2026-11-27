@@ -18,6 +18,7 @@ import (
 
 	"github.com/tessaly-dev/tessaly/internal/auth"
 	"github.com/tessaly-dev/tessaly/internal/config"
+	"github.com/tessaly-dev/tessaly/internal/forge"
 	"github.com/tessaly-dev/tessaly/internal/server"
 	"github.com/tessaly-dev/tessaly/internal/store"
 	"github.com/tessaly-dev/tessaly/internal/version"
@@ -137,6 +138,7 @@ func serve(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 		Store:      db,
 		Workspaces: workspaces,
 		Agents:     settings.Agents,
+		Forge:      forge.GitHub{},
 	}
 	// Agents must not outlive the daemon. Stop them once serving ends,
 	// whether by Ctrl-C or an error.

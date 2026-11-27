@@ -17,6 +17,8 @@ export type Workspace = {
   ended?: string;
   // True when the agent runs but has been quiet, so it probably waits for input.
   waiting?: boolean;
+  // The pull request opened from the branch, if any.
+  prUrl?: string;
 };
 
 // resume, when set, is the command that picks up the agent's last session.
