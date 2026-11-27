@@ -75,6 +75,33 @@ signs:
       - ${artifact}
       - --yes
 
+# The Homebrew cask in Tessaly-dev/homebrew-tap: brew install tessaly-dev/tap/tess
+# The release workflow passes HOMEBREW_TAP_TOKEN, a token that can only write
+# to the tap. Without it, and for pre-releases, the tap is left alone.
+homebrew_casks:
+  - name: tess
+    binaries: [tess]
+    description: Run coding agents in parallel git worktrees, from your browser
+    homepage: https://github.com/Tessaly-dev/tessaly
+    license: Apache-2.0
+    repository:
+      owner: Tessaly-dev
+      name: homebrew-tap
+      token: "{{ envOrDefault \"HOMEBREW_TAP_TOKEN\" \"\" }}"
+    commit_author:
+      name: tessaly-release
+      email: hello@tessaly.dev
+    commit_msg_template: "tess {{ .Tag }}"
+    skip_upload: "{{ if envOrDefault \"HOMEBREW_TAP_TOKEN\" \"\" }}auto{{ else }}true{{ end }}"
+    hooks:
+      post:
+        # The binaries are not notarized by Apple. Homebrew has already checked
+        # the archive's SHA-256, so clear the quarantine flag that would block it.
+        install_steps: |
+          on_macos do
+            run "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "{{ .StagedPath }}/tess"]
+          end
+
 changelog:
   use: github
   sort: asc
