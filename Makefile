@@ -18,7 +18,7 @@ build: ui ## Build bin/tess with the UI embedded
 dev: build ## Build and run the server on 127.0.0.1:7777
 	$(BIN) serve
 
-test: test-go test-ui ## Run Go and UI unit tests
+test: test-go test-ui test-install ## Run Go, UI and install script tests
 
 test-go:
 	go test -race ./...
@@ -26,12 +26,16 @@ test-go:
 test-ui:
 	cd web && pnpm test
 
+test-install:
+	sh scripts/install_test.sh
+
 e2e: build ## Run the browser end-to-end tests against bin/tess
 	cd web && pnpm run e2e
 
 lint: ## Run Go and UI linters and type checks
 	golangci-lint run ./...
 	go vet ./...
+	shellcheck scripts/*.sh
 	cd web && pnpm run typecheck
 
 check: lint test build ## Everything CI runs

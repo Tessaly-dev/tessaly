@@ -55,6 +55,8 @@ Platform rules:
 | `internal/workspace` | Workspace life cycle: branch, worktree and the state table in `state.go` |
 | `internal/version` | Build version, set with `-ldflags` |
 | `web/` | React UI, embedded into the binary with `go:embed` from `web/dist` |
+| `scripts/` | `install.sh` for users, and its tests |
+| `.goreleaser.yaml` | Release builds, see [Releasing](docs/wiki/Releasing.md) |
 | `docs/` | Developer docs |
 | `docs/wiki/` | Pages published to the GitHub wiki |
 
