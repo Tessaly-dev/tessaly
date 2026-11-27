@@ -29,7 +29,7 @@ Passkeys work only at `http://localhost:<port>`. Browsers do not accept an IP ad
 
 Once you have a passkey, the token no longer signs in, and `tess serve` prints a passkey hint instead of the token link. Sessions that were signed in keep working.
 
-To keep token sign-in on, for example for scripts that call the API, start `tess serve --allow-token-login`. If you lose your passkey, restart with that flag and sign in with the token.
+To keep token sign-in on, for example for scripts that call the API, start `tess serve --allow-token-login`.
 
 ### Changing your passkeys
 
@@ -63,9 +63,26 @@ The passkey routes run a WebAuthn ceremony in two steps. A `begin` route replies
 | `POST /api/v1/passkeys/verify/begin`, `/finish` | Yes | Check a passkey, which counts as fresh for 5 minutes |
 | `DELETE /api/v1/passkeys/{id}` | Yes, fresh | Remove a passkey and end its sessions |
 
+## Lost your passkeys: tess auth reset
+
+Run this on the machine that runs `tess serve`:
+
+```sh
+tess auth reset
+```
+
+It asks you to type `reset`, then removes every passkey, ends every session and writes a new token. The old token stops working. In a terminal it prints a new sign-in link. Token sign-in is open again until you add a new passkey. Pass `--yes` to skip the question, for example in a script. Without a terminal and without `--yes` it changes nothing.
+
+- While `tess serve` runs, the command asks the daemon over its control socket, `~/.tessaly/run/control.sock`. The socket is mode 0600 in a 0700 folder, and the daemon refuses callers that run as another OS user. It is not part of the HTTP server, so no web page or network client can reach it.
+- While `tess serve` is stopped, the command changes the token file and `tessaly.db` itself. The daemon holds a lock file, `~/.tessaly/run/tess.lock`, while it runs, which is how the command tells the two cases apart. The lock also stops a second `tess serve` from using the same data folder.
+
+Each reset writes a row to the `auth_events` table in `tessaly.db`, and a running daemon logs a warning. Every session ends, so a reset you did not make shows up as being signed out.
+
+In Docker, run `docker exec tess tess auth reset --yes`, then read the new token with `docker exec tess cat /data/token`.
+
 ## Changing the token
 
-Stop `tess serve`, delete `~/.tessaly/token` and start it again. It makes a new token, and the old one stops working.
+Run `tess auth reset`. It also removes your passkeys. To change only the token, stop `tess serve`, delete `~/.tessaly/token` and start it again.
 
 ## Keep it secret
 

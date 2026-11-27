@@ -71,8 +71,8 @@ export function SignIn({ options, onSignIn, onPasskey }: Props) {
       )}
       {!showToken && (
         <p className="hint">
-          Token sign-in is off because a passkey is registered. Lost your passkey? Restart <code>tess serve</code> with{" "}
-          <code>--allow-token-login</code> on the host.
+          Token sign-in is off because a passkey is registered. Lost your passkey? Run <code>tess auth reset</code> on
+          the host.
         </p>
       )}
       {error && <p role="alert">{error}</p>}

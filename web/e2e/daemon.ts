@@ -8,6 +8,8 @@ import path from "node:path";
 export type Daemon = {
   url: string;
   token: string;
+  // home is the daemon's data folder, TESSALY_HOME.
+  home: string;
   repo: string;
   // restart stops tess serve and starts it again with the same data folder,
   // so agents that ran are cut off, as in a real restart.
@@ -15,7 +17,7 @@ export type Daemon = {
   stop(): Promise<void>;
 };
 
-const binary = path.resolve(import.meta.dirname, "../../bin/tess");
+export const binary = path.resolve(import.meta.dirname, "../../bin/tess");
 
 // startDaemon runs bin/tess on port with a fresh TESSALY_HOME, a config that
 // defines the agents the tests use, and a repo with one commit.
@@ -48,6 +50,7 @@ export async function startDaemon(port: number): Promise<Daemon> {
   return {
     url,
     token,
+    home,
     repo,
     async restart() {
       await stopProcess(proc);

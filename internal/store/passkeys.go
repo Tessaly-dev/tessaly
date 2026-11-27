@@ -136,3 +136,62 @@ func (s *Store) WebAuthnUserID(ctx context.Context) ([]byte, error) {
 	}
 	return got, nil
 }
+
+// AuthEvent is one row of the sign-in audit log.
+type AuthEvent struct {
+	At       time.Time
+	Kind     string // "reset"
+	Method   string // "socket" when the daemon ran, "direct" when it did not
+	Passkeys int64  // Passkeys removed
+	Sessions int    // Sessions ended
+}
+
+// ResetPasskeys deletes every passkey and writes an audit row, in one
+// transaction. It returns how many passkeys it deleted.
+func (s *Store) ResetPasskeys(ctx context.Context, method string, sessions int) (int64, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, fmt.Errorf("reset passkeys: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	res, err := tx.ExecContext(ctx, "DELETE FROM passkeys")
+	if err != nil {
+		return 0, fmt.Errorf("reset passkeys: %w", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("reset passkeys: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx,
+		"INSERT INTO auth_events (at, kind, method, passkeys, sessions) VALUES (?, 'reset', ?, ?, ?)",
+		time.Now().UTC().Truncate(time.Second).Format(time.RFC3339), method, n, sessions); err != nil {
+		return 0, fmt.Errorf("reset passkeys: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, fmt.Errorf("reset passkeys: %w", err)
+	}
+	return n, nil
+}
+
+// AuthEvents returns the audit log, newest first.
+func (s *Store) AuthEvents(ctx context.Context) ([]AuthEvent, error) {
+	rows, err := s.db.QueryContext(ctx,
+		"SELECT at, kind, method, passkeys, sessions FROM auth_events ORDER BY id DESC")
+	if err != nil {
+		return nil, fmt.Errorf("list auth events: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	var out []AuthEvent
+	for rows.Next() {
+		var e AuthEvent
+		var at string
+		if err := rows.Scan(&at, &e.Kind, &e.Method, &e.Passkeys, &e.Sessions); err != nil {
+			return nil, fmt.Errorf("list auth events: %w", err)
+		}
+		if e.At, err = time.Parse(time.RFC3339, at); err != nil {
+			return nil, fmt.Errorf("list auth events: %w", err)
+		}
+		out = append(out, e)
+	}
+	return out, rows.Err()
+}

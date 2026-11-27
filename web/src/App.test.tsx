@@ -124,7 +124,7 @@ describe("App passkey sign-in", () => {
     render(<App repos={noRepos} workspaces={noWorkspaces} load={healthy} auth={fakeAuth(false)} passkeys={passkeys} />);
     expect(await screen.findByRole("link", { name: "http://localhost:7777" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Sign in with a passkey" })).toBeNull();
-    expect(screen.getByText(/Token sign-in is off/)).toBeTruthy();
+    expect(screen.getByText(/tess auth reset/)).toBeTruthy();
   });
 
   it("offers both while token sign-in stays on", async () => {

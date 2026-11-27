@@ -184,7 +184,10 @@ func (a *Auth) Login(w http.ResponseWriter, r *http.Request) {
 	}
 	// Compare hashes so the comparison takes the same time for any input length.
 	got := sha256.Sum256([]byte(body.Token))
-	if subtle.ConstantTimeCompare(got[:], a.tokenHash[:]) != 1 {
+	a.mu.Lock()
+	want := a.tokenHash // Reset can change it.
+	a.mu.Unlock()
+	if subtle.ConstantTimeCompare(got[:], want[:]) != 1 {
 		a.countFailure()
 		http.Error(w, "wrong token", http.StatusUnauthorized)
 		return
@@ -351,4 +354,44 @@ func (a *Auth) dropExpiredLocked() {
 			delete(a.sessions, k)
 		}
 	}
+}
+
+// ReplaceToken writes a new random token to path with mode 0600, replacing
+// the old file in one rename, and returns it.
+func ReplaceToken(path string) (string, error) {
+	token := newSecret()
+	tmp := path + ".new"
+	_ = os.Remove(tmp)                                                   // A leftover from a crash. Never follow it.
+	f, err := os.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600) // #nosec G304 -- next to the daemon's own token file.
+	if err != nil {
+		return "", fmt.Errorf("write token file: %w", err)
+	}
+	if _, err := f.WriteString(token + "\n"); err != nil {
+		_ = f.Close()
+		_ = os.Remove(tmp)
+		return "", fmt.Errorf("write token file: %w", err)
+	}
+	if err := f.Close(); err != nil {
+		_ = os.Remove(tmp)
+		return "", fmt.Errorf("write token file: %w", err)
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		_ = os.Remove(tmp)
+		return "", fmt.Errorf("write token file: %w", err)
+	}
+	return token, nil
+}
+
+// Reset makes token the only way in: it ends every session and open
+// passkey prompt, clears the sign-in limit, and returns how many sessions
+// it ended. Call it with the token ReplaceToken wrote.
+func (a *Auth) Reset(token string) int {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	n := len(a.sessions)
+	a.tokenHash = sha256.Sum256([]byte(token))
+	a.sessions = make(map[[sha256.Size]byte]session)
+	a.ceremonies = make(map[[sha256.Size]byte]ceremony)
+	a.failed = 0
+	return n
 }
