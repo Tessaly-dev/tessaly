@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/tessaly-dev/tessaly/internal/checks"
 	"github.com/tessaly-dev/tessaly/internal/forge"
 	"github.com/tessaly-dev/tessaly/internal/gitx"
 	"github.com/tessaly-dev/tessaly/internal/store"
@@ -18,6 +19,7 @@ type workspaceHandlers struct {
 	store   *store.Store
 	manager *workspace.Manager
 	forge   forge.Forge
+	checks  *checks.Watcher
 }
 
 // workspaceView is a workspace as the list shows it, with live state that
@@ -27,6 +29,8 @@ type workspaceView struct {
 	// Waiting is true when the agent runs but has been quiet for a while,
 	// so it probably waits for input.
 	Waiting bool `json:"waiting,omitempty"`
+	// Checks is the CI status of the workspace's pull request, if known.
+	Checks *checks.Summary `json:"checks,omitempty"`
 }
 
 func (h workspaceHandlers) list(w http.ResponseWriter, r *http.Request) {
@@ -38,6 +42,9 @@ func (h workspaceHandlers) list(w http.ResponseWriter, r *http.Request) {
 	views := make([]workspaceView, len(list))
 	for i, ws := range list {
 		views[i] = workspaceView{Workspace: ws, Waiting: h.manager.Waiting(ws.ID)}
+		if s, ok := h.checks.Get(ws.ID); ok {
+			views[i].Checks = &s
+		}
 	}
 	writeJSON(w, http.StatusOK, views)
 }
@@ -154,6 +161,7 @@ func (h workspaceHandlers) ship(w http.ResponseWriter, r *http.Request) {
 	case err != nil:
 		serverError(w, err)
 	default:
+		h.checks.Kick()
 		writeJSON(w, http.StatusOK, ws)
 	}
 }

@@ -26,6 +26,12 @@ The panel then links the pull request. You cannot ship while an agent runs, so s
 
 Once a pull request is open, the panel shows Push changes and a commit message field. Pressing it commits any changes and pushes them, and the pull request picks them up.
 
+## Check status
+
+Once a pull request is open, Tessaly asks gh for its CI checks (`gh pr checks`) every minute, and right after each push. The Pull request panel lists every check, failed ones first, with a link to each. The Home list shows the workspace under Ready to review as "Pull request open" with "checks passed", "checks running" or "checks failing".
+
+The status lives in memory, so it shows again a minute after `tess serve` starts. If gh cannot answer, the panel keeps the last checks and says why. Archived workspaces are not checked.
+
 ## When something fails
 
 The panel shows the message from git or gh, with any credentials in a remote URL hidden. Common causes:

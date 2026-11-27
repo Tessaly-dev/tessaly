@@ -15,6 +15,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/tessaly-dev/tessaly/internal/forge"
 	"github.com/tessaly-dev/tessaly/internal/store"
 )
 
@@ -25,6 +26,10 @@ func (f fakeForge) OpenPR(context.Context, string, string, string, string) (stri
 		return "", f.err
 	}
 	return "https://github.com/acme/app/pull/7", nil
+}
+
+func (f fakeForge) Checks(context.Context, string, string) ([]forge.Check, error) {
+	return []forge.Check{{Name: "CI", Bucket: "pass"}}, f.err
 }
 
 func gitRun(t *testing.T, dir string, args ...string) {
@@ -111,5 +116,36 @@ func TestShipAPIShowsStepErrors(t *testing.T) {
 	}
 	if !strings.HasPrefix(body.Error, "open pull request: gh pr create: xxx") || len(body.Error) > maxShipError+3 {
 		t.Errorf("error = %s", fmt.Sprintf("%.80q (len %d)", body.Error, len(body.Error)))
+	}
+}
+
+func TestListShowsChecks(t *testing.T) {
+	cfg := testConfig(t, testPort, testUI)
+	h := Handler(cfg)
+	c := signIn(t, h)
+	repo := addRepoWithCommit(t, h, c)
+	rec := send(t, h, http.MethodPost, "/api/v1/workspaces", wsBody(repo.ID, "fix-login"), c, nil)
+	var ws store.Workspace
+	if err := json.NewDecoder(rec.Body).Decode(&ws); err != nil {
+		t.Fatal(err)
+	}
+	if err := cfg.Store.SetWorkspacePR(context.Background(), ws.ID, "https://github.com/acme/app/pull/7"); err != nil {
+		t.Fatal(err)
+	}
+	cfg.Checks.Update(context.Background())
+
+	rec = send(t, h, http.MethodGet, "/api/v1/workspaces", "", c, nil)
+	var list []struct {
+		PRURL  string `json:"prUrl"`
+		Checks *struct {
+			State  string `json:"state"`
+			Checks []forge.Check
+		} `json:"checks"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&list); err != nil {
+		t.Fatal(err)
+	}
+	if len(list) != 1 || list[0].Checks == nil || list[0].Checks.State != "pass" || len(list[0].Checks.Checks) != 1 {
+		t.Errorf("list = %+v, want the passing check", list)
 	}
 }

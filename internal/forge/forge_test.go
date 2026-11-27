@@ -5,6 +5,7 @@ package forge
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -94,5 +95,42 @@ func TestOpenPRErrors(t *testing.T) {
 		if url, err := (GitHub{Bin: bin}).OpenPR(ctx, t.TempDir(), "b", "t", ""); err == nil {
 			t.Errorf("gh printed %q: url = %q, want an error", out, url)
 		}
+	}
+}
+
+func TestChecks(t *testing.T) {
+	ctx := context.Background()
+	pr := "https://github.com/acme/app/pull/7"
+	json := `[{"name":"Go tests","bucket":"pass","link":"https://github.com/acme/app/actions/runs/1"},` +
+		`{"name":"E2E","bucket":"pending","link":"javascript:alert(1)"},{"name":"Odd","bucket":"weird"}]`
+	// gh exits 8 while a check is pending, and still prints JSON.
+	bin, dir := fakeGH(t, "echo '"+json+"'; exit 8")
+	got, err := GitHub{Bin: bin}.Checks(ctx, t.TempDir(), pr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []Check{
+		{Name: "Go tests", Bucket: "pass", Link: "https://github.com/acme/app/actions/runs/1"},
+		{Name: "E2E", Bucket: "pending"},
+		{Name: "Odd", Bucket: "pending"},
+	}
+	if fmt.Sprint(got) != fmt.Sprint(want) {
+		t.Errorf("Checks = %+v, want %+v", got, want)
+	}
+	if args := read(t, filepath.Join(dir, "args")); args != "pr\nchecks\n--json=name,bucket,link\n--\n"+pr+"\n" {
+		t.Errorf("args = %q", args)
+	}
+
+	bin, _ = fakeGH(t, `echo "no checks reported on the 'tess/fix' branch" >&2; exit 1`)
+	if got, err := (GitHub{Bin: bin}).Checks(ctx, t.TempDir(), pr); err != nil || len(got) != 0 {
+		t.Errorf("no checks: %v, %v; want empty", got, err)
+	}
+
+	bin, _ = fakeGH(t, `echo "authentication required" >&2; exit 4`)
+	if _, err := (GitHub{Bin: bin}).Checks(ctx, t.TempDir(), pr); err == nil {
+		t.Error("failing gh: want an error")
+	}
+	if _, err := (GitHub{Bin: bin}).Checks(ctx, t.TempDir(), "--web"); err == nil {
+		t.Error("flag as URL: want an error")
 	}
 }

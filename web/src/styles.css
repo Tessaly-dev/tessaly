@@ -354,3 +354,33 @@ textarea {
 .ship a {
   color: var(--accent);
 }
+
+.checks ul {
+  list-style: none;
+  padding: 0;
+  margin: 0.5rem 0;
+  display: grid;
+  gap: 0.25rem;
+}
+
+.check-bucket {
+  display: inline-block;
+  min-width: 5.5rem;
+  font-size: 0.8125rem;
+}
+
+.checks-fail,
+.check-fail .check-bucket,
+.check-cancel .check-bucket {
+  color: var(--del);
+}
+
+.checks-pass,
+.check-pass .check-bucket {
+  color: var(--add);
+}
+
+.checks-pending,
+.check-pending .check-bucket {
+  color: var(--accent);
+}

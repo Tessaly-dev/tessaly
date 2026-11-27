@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/tessaly-dev/tessaly/internal/auth"
+	"github.com/tessaly-dev/tessaly/internal/checks"
 	"github.com/tessaly-dev/tessaly/internal/config"
 	"github.com/tessaly-dev/tessaly/internal/store"
 	"github.com/tessaly-dev/tessaly/internal/version"
@@ -54,6 +55,7 @@ func testConfig(t *testing.T, port int, ui fstest.MapFS) Config {
 		Auth:       auth.New(testToken),
 		Store:      db,
 		Workspaces: workspace.NewManager(db, t.TempDir()),
+		Checks:     checks.New(db, fakeForge{}, time.Hour),
 		Agents: map[string]config.Agent{
 			"echo":  {Command: []string{"printf", "said: %s\\n", "{prompt}"}},
 			"sleep": {Command: []string{"sleep", "60"}, Resume: []string{"printf", "resumed\\n"}},

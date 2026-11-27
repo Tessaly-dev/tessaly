@@ -82,3 +82,29 @@ describe("ship helpers", () => {
     expect(prLabel("https://gitlab.com/a/b/-/merge_requests/3")).toBe("https://gitlab.com/a/b/-/merge_requests/3");
   });
 });
+
+describe("Ship checks", () => {
+  it("lists checks worst first with safe links", () => {
+    const checks = {
+      state: "fail" as const,
+      updatedAt: "",
+      checks: [
+        { name: "Go tests", bucket: "pass" as const, link: "https://github.com/acme/app/actions/runs/1" },
+        { name: "E2E", bucket: "fail" as const },
+      ],
+    };
+    render(<Ship ws={{ ...ws, prUrl, checks }} onChange={async () => undefined} />);
+    const region = screen.getByRole("region", { name: "Checks" });
+    expect(region.textContent).toContain("Some checks failed");
+    const items = screen.getAllByRole("listitem").map((li) => li.textContent);
+    expect(items).toEqual(["Failed E2E", "Passed Go tests"]);
+    const link = screen.getByRole("link", { name: "Go tests" });
+    expect(link.getAttribute("rel")).toBe("noopener noreferrer");
+  });
+
+  it("says when the update failed", () => {
+    const checks = { error: "gh pr checks: offline", updatedAt: "" };
+    render(<Ship ws={{ ...ws, prUrl, checks }} onChange={async () => undefined} />);
+    expect(screen.getByText("Could not update the checks: gh pr checks: offline")).toBeTruthy();
+  });
+});

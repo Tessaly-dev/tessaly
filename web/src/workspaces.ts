@@ -19,6 +19,18 @@ export type Workspace = {
   waiting?: boolean;
   // The pull request opened from the branch, if any.
   prUrl?: string;
+  // The CI status of that pull request, once Tessaly has asked.
+  checks?: ChecksSummary;
+};
+
+export type Check = { name: string; bucket: "pass" | "fail" | "pending" | "skipping" | "cancel"; link?: string };
+
+export type ChecksSummary = {
+  state?: "pass" | "fail" | "pending" | "none";
+  checks?: Check[] | null;
+  // Why the last update failed. The previous checks stay.
+  error?: string;
+  updatedAt: string;
 };
 
 // resume, when set, is the command that picks up the agent's last session.
