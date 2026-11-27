@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { execFileSync } from "node:child_process";
+import { hostname } from "node:os";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { expect, test } from "@playwright/test";
@@ -90,7 +91,11 @@ test("tess auth reset removes passkeys and ends sessions", async ({ page, contex
 
   // Reset on the host while tess serve runs. It talks to the daemon over
   // the control socket and writes a new token.
-  const out = execFileSync(binary, ["auth", "reset", "--yes"], { env: { ...process.env, TESSALY_HOME: daemon.home } });
+  // It asks for this machine's host name first.
+  const out = execFileSync(binary, ["auth", "reset"], {
+    env: { ...process.env, TESSALY_HOME: daemon.home },
+    input: `${hostname()}\n`,
+  });
   expect(out.toString()).toContain("Passkeys removed: 1. Sessions ended: 1.");
   const token = readFileSync(path.join(daemon.home, "token"), "utf8").trim();
   expect(token).not.toBe(daemon.token);
@@ -102,6 +107,15 @@ test("tess auth reset removes passkeys and ends sessions", async ({ page, contex
   await expect(page.getByRole("alert")).toHaveText("That token is not right.");
   await page.getByLabel("Token").fill(token);
   await page.getByRole("button", { name: "Sign in" }).click();
+  // Whoever signs in next sees that a reset ran, until they dismiss it.
+  await expect(page.getByRole("alert")).toContainText("Sign-in was reset from the host");
+  await page.getByRole("button", { name: "Dismiss" }).click();
+  await expect(page.getByRole("alert")).toHaveCount(0);
   await page.getByRole("tab", { name: "Passkeys" }).click();
   await expect(page.getByText("No passkeys yet.")).toBeVisible();
+
+  // The reset token works once, so the form no longer offers it.
+  await page.getByRole("button", { name: "Sign out" }).click();
+  await expect(page.getByText("already used the token from a reset")).toBeVisible();
+  await expect(page.getByLabel("Token")).toHaveCount(0);
 });

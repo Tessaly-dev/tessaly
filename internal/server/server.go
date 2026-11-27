@@ -100,6 +100,8 @@ func Handler(cfg Config) http.Handler {
 	api.HandleFunc("POST /api/v1/passkeys/verify/begin", cfg.Auth.VerifyBegin)
 	api.HandleFunc("POST /api/v1/passkeys/verify/finish", cfg.Auth.VerifyFinish)
 	api.HandleFunc("DELETE /api/v1/passkeys/{id}", cfg.Auth.DeletePasskey)
+	api.HandleFunc("GET /api/v1/reset-notice", cfg.Auth.ResetNotice)
+	api.HandleFunc("DELETE /api/v1/reset-notice", cfg.Auth.DismissResetNotice)
 	repos := repoHandlers{store: cfg.Store, addMu: &sync.Mutex{}}
 	api.HandleFunc("GET /api/v1/repos", repos.list)
 	api.HandleFunc("POST /api/v1/repos", repos.add)

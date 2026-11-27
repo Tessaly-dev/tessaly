@@ -5,6 +5,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -77,8 +78,9 @@ func TestAuthResetWhileStopped(t *testing.T) {
 	t.Setenv("TESSALY_HOME", home)
 	old := prepare(t, home)
 
+	answer(t, hostname(t))
 	var stdout, stderr bytes.Buffer
-	if code := run(context.Background(), []string{"auth", "reset", "--yes"}, &stdout, &stderr); code != 0 {
+	if code := run(context.Background(), []string{"auth", "reset"}, &stdout, &stderr); code != 0 {
 		t.Fatalf("auth reset = %d: %s", code, stderr.String())
 	}
 	if !strings.Contains(stdout.String(), "Passkeys removed: 1. Sessions ended: 0.") {
@@ -111,8 +113,9 @@ func TestAuthResetWhileRunning(t *testing.T) {
 	}()
 	waitFor(t, control.SocketPath(home))
 
+	answer(t, hostname(t))
 	var stdout, stderr bytes.Buffer
-	if code := run(context.Background(), []string{"auth", "reset", "--yes"}, &stdout, &stderr); code != 0 {
+	if code := run(context.Background(), []string{"auth", "reset"}, &stdout, &stderr); code != 0 {
 		t.Fatalf("auth reset = %d: %s", code, stderr.String())
 	}
 	token := readToken(t, home)
@@ -149,16 +152,37 @@ func TestAuthResetNeedsConfirmation(t *testing.T) {
 	home := testHome(t)
 	t.Setenv("TESSALY_HOME", home)
 	old := prepare(t, home)
+	answer(t, "reset")
 	var stdout, stderr bytes.Buffer
 	if code := run(context.Background(), []string{"auth", "reset"}, &stdout, &stderr); code != 1 {
-		t.Errorf("reset without --yes and without a terminal = %d, want 1", code)
+		t.Errorf("reset with a wrong host name = %d, want 1", code)
 	}
 	if readToken(t, home) != old {
 		t.Error("token changed without confirmation")
 	}
+	if code := run(context.Background(), []string{"auth", "reset", "--yes"}, &stdout, &stderr); code != 2 {
+		t.Errorf("tess auth reset --yes = %d, want 2", code)
+	}
 	if code := run(context.Background(), []string{"auth"}, &stdout, &stderr); code != 2 {
 		t.Errorf("tess auth = %d, want 2", code)
 	}
+}
+
+// answer makes stdin hold line for the rest of the test.
+func answer(t *testing.T, line string) {
+	t.Helper()
+	old := stdin
+	stdin = strings.NewReader(line + "\n")
+	t.Cleanup(func() { stdin = old })
+}
+
+func hostname(t *testing.T) string {
+	t.Helper()
+	host, err := os.Hostname()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return host
 }
 
 func waitFor(t *testing.T, path string) {
@@ -171,4 +195,19 @@ func waitFor(t *testing.T, path string) {
 		time.Sleep(20 * time.Millisecond)
 	}
 	t.Fatalf("%s did not appear", path)
+}
+
+func TestResetRefusesAgents(t *testing.T) {
+	ran := false
+	reset := func(context.Context) (any, error) { ran = true; return nil, nil }
+	self := os.Getpid()
+	h := resetHandler(func() []int { return []int{os.Getppid()} }, reset)
+	var refused control.Refused
+	if _, err := h(context.Background(), control.CmdAuthReset, self); !errors.As(err, &refused) || ran {
+		t.Errorf("reset from under an agent: err %v, ran %v, want refused", err, ran)
+	}
+	h = resetHandler(func() []int { return nil }, reset)
+	if _, err := h(context.Background(), control.CmdAuthReset, self); err != nil || !ran {
+		t.Errorf("reset with no agents: err %v, ran %v, want it to run", err, ran)
+	}
 }

@@ -190,6 +190,8 @@ func newTestAuth(t *testing.T, allowToken bool) *testAuth {
 	api.HandleFunc("POST /api/passkeys/verify/begin", a.VerifyBegin)
 	api.HandleFunc("POST /api/passkeys/verify/finish", a.VerifyFinish)
 	api.HandleFunc("DELETE /api/passkeys/{id}", a.DeletePasskey)
+	api.HandleFunc("GET /api/reset-notice", a.ResetNotice)
+	api.HandleFunc("DELETE /api/reset-notice", a.DismissResetNotice)
 	api.Handle("POST /api/fresh", a.RequireFresh(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 	})))
@@ -596,5 +598,72 @@ func TestPasskeyName(t *testing.T) {
 		if got, err := passkeyName(in); err != nil || got != want {
 			t.Errorf("passkeyName(%q) = %q, %v, want %q", in, got, err, want)
 		}
+	}
+}
+
+// A reset while the daemon was stopped starts the token's time when the
+// daemon starts, and the token still works only once.
+func TestPendingResetStartsOnEnable(t *testing.T) {
+	ctx := context.Background()
+	db, err := store.Open(ctx, filepath.Join(t.TempDir(), "tessaly.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	if _, err := db.ResetPasskeys(ctx, "direct", 0, time.Time{}); err != nil {
+		t.Fatal(err)
+	}
+	token := strings.Repeat("A", tokenLen)
+	a := New(token)
+	now := time.Date(2026, 11, 27, 12, 0, 0, 0, time.UTC)
+	a.now = func() time.Time { return now }
+	if err := a.EnablePasskeys(db, testPort, false); err != nil {
+		t.Fatal(err)
+	}
+	if state, err := db.TokenState(ctx); err != nil || state != store.ResetTokenState(now.Add(ResetTokenTTL)) {
+		t.Errorf("token state = %q, %v, want the reset time from now", state, err)
+	}
+	login := func() int {
+		rec := httptest.NewRecorder()
+		a.Login(rec, httptest.NewRequest("POST", "/login", strings.NewReader(`{"token":"`+token+`"}`)))
+		return rec.Code
+	}
+	if code := login(); code != http.StatusOK {
+		t.Errorf("first sign-in = %d, want 200", code)
+	}
+	if code := login(); code != http.StatusForbidden {
+		t.Errorf("second sign-in = %d, want 403", code)
+	}
+	if state, _ := db.TokenState(ctx); state != "used" {
+		t.Errorf("token state = %q, want used", state)
+	}
+}
+
+func TestResetNotice(t *testing.T) {
+	ta := newTestAuth(t, false)
+	c := signedIn(t, ta.tokenLogin(t))
+	notice := func() *time.Time {
+		t.Helper()
+		rec := ta.do(t, c, "GET", "/api/reset-notice", nil)
+		var body struct{ ResetAt *time.Time }
+		if rec.Code != http.StatusOK || json.Unmarshal(rec.Body.Bytes(), &body) != nil {
+			t.Fatalf("reset notice = %d %s", rec.Code, rec.Body)
+		}
+		return body.ResetAt
+	}
+	if at := notice(); at != nil {
+		t.Errorf("notice before any reset = %v, want none", at)
+	}
+	if _, err := ta.db.ResetPasskeys(context.Background(), "socket", 0, time.Now().Add(time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	if at := notice(); at == nil || time.Since(*at) > time.Minute {
+		t.Errorf("notice after a reset = %v, want about now", at)
+	}
+	if rec := ta.do(t, c, "DELETE", "/api/reset-notice", nil); rec.Code != http.StatusNoContent {
+		t.Fatalf("dismiss = %d", rec.Code)
+	}
+	if at := notice(); at != nil {
+		t.Errorf("notice after dismiss = %v, want none", at)
 	}
 }

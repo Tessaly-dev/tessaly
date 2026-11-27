@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/tessaly-dev/tessaly/internal/auth"
 	"github.com/tessaly-dev/tessaly/internal/config"
@@ -34,7 +35,6 @@ type resetResult struct {
 func authReset(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("auth reset", flag.ContinueOnError)
 	fs.SetOutput(stderr)
-	yes := fs.Bool("yes", false, "do not ask before resetting")
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return 0
@@ -55,8 +55,13 @@ func authReset(ctx context.Context, args []string, stdin io.Reader, stdout, stde
 		return 1
 	}
 
-	if !*yes && !confirm(stdin, stdout) {
-		fmt.Fprintln(stderr, "tess auth reset: not confirmed, nothing changed. Type reset, or pass --yes.")
+	host, err := os.Hostname()
+	if err != nil {
+		fmt.Fprintf(stderr, "tess auth reset: %v\n", err)
+		return 1
+	}
+	if !confirm(stdin, stdout, host) {
+		fmt.Fprintf(stderr, "tess auth reset: not confirmed, nothing changed. Type %s to confirm.\n", host)
 		return 1
 	}
 
@@ -85,15 +90,27 @@ func authReset(ctx context.Context, args []string, stdin io.Reader, stdout, stde
 	return 0
 }
 
-// confirm asks the user to type "reset". Without a terminal it refuses, so
-// a script must say --yes.
-func confirm(stdin io.Reader, stdout io.Writer) bool {
-	if f, ok := stdin.(*os.File); !ok || !isTerminal(f) {
-		return false
+// confirm asks the user to type this machine's host name, so a reset
+// happens only on purpose and on the machine they meant. A script can pipe
+// the name in.
+func confirm(stdin io.Reader, stdout io.Writer, host string) bool {
+	fmt.Fprintf(stdout, "This removes every passkey, signs everyone out and makes a login token that works once, for %s.\n"+
+		"Type this machine's host name (%s) to continue: ", auth.ResetTokenTTL, host)
+	line, _ := bufio.NewReader(io.LimitReader(stdin, 256)).ReadString('\n')
+	return strings.TrimSpace(line) == host
+}
+
+// resetHandler answers the control socket. It refuses a caller that runs
+// under an agent: an agent runs as the same user, so the UID check alone
+// would let it reset sign-in and read the new token.
+func resetHandler(agents func() []int, reset func(context.Context) (any, error)) control.Handler {
+	return func(ctx context.Context, _ string, pid int) (any, error) {
+		if control.InTree(pid, agents()) {
+			slog.Warn("refused tess auth reset from an agent", "pid", pid)
+			return nil, control.Refused("tess auth reset cannot run from an agent's terminal")
+		}
+		return reset(ctx)
 	}
-	fmt.Fprint(stdout, "This removes every passkey, signs everyone out and makes a new login token.\nType reset to continue: ")
-	line, _ := bufio.NewReader(stdin).ReadString('\n')
-	return strings.TrimSpace(line) == "reset"
 }
 
 // resetRunning is the daemon's side of a reset: a new token, every session
@@ -103,8 +120,9 @@ func resetRunning(ctx context.Context, a *auth.Auth, db *store.Store, tokenPath,
 	if err != nil {
 		return resetResult{}, err
 	}
-	sessions := a.Reset(token)
-	passkeys, err := db.ResetPasskeys(ctx, "socket", sessions)
+	until := time.Now().Add(auth.ResetTokenTTL)
+	sessions := a.Reset(token, until)
+	passkeys, err := db.ResetPasskeys(ctx, "socket", sessions, until)
 	if err != nil {
 		return resetResult{}, err
 	}
@@ -123,6 +141,8 @@ func resetStopped(ctx context.Context, home, tokenPath string) (resetResult, err
 		return resetResult{}, err
 	}
 	defer func() { _ = db.Close() }()
-	passkeys, err := db.ResetPasskeys(ctx, "direct", 0)
+	// The 15 minutes start when tess serve starts, since nobody can use the
+	// token before that. EnablePasskeys reads this mark.
+	passkeys, err := db.ResetPasskeys(ctx, "direct", 0, time.Time{})
 	return resetResult{Passkeys: passkeys}, err
 }

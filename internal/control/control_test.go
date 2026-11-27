@@ -83,7 +83,10 @@ func serveTest(t *testing.T, h Handler) string {
 }
 
 func TestCall(t *testing.T) {
-	home := serveTest(t, func(_ context.Context, cmd string) (any, error) {
+	home := serveTest(t, func(_ context.Context, cmd string, pid int) (any, error) {
+		if pid != os.Getpid() {
+			t.Errorf("caller pid = %d, want %d", pid, os.Getpid())
+		}
 		return map[string]string{"ran": cmd}, nil
 	})
 	var got struct{ Ran string }
@@ -99,7 +102,7 @@ func TestCall(t *testing.T) {
 }
 
 func TestCallReportsFailureWithoutDetails(t *testing.T) {
-	home := serveTest(t, func(context.Context, string) (any, error) {
+	home := serveTest(t, func(context.Context, string, int) (any, error) {
 		return nil, errors.New("secret detail")
 	})
 	err := Call(home, CmdAuthReset, nil)
@@ -108,8 +111,17 @@ func TestCallReportsFailureWithoutDetails(t *testing.T) {
 	}
 }
 
+func TestCallPassesRefusals(t *testing.T) {
+	home := serveTest(t, func(context.Context, string, int) (any, error) {
+		return nil, Refused("not from an agent")
+	})
+	if err := Call(home, CmdAuthReset, nil); err == nil || !strings.Contains(err.Error(), "not from an agent") {
+		t.Errorf("Call = %v, want the refusal", err)
+	}
+}
+
 func TestServeRefusesLongCommands(t *testing.T) {
-	home := serveTest(t, func(context.Context, string) (any, error) { return nil, nil })
+	home := serveTest(t, func(context.Context, string, int) (any, error) { return nil, nil })
 	conn, err := net.Dial("unix", SocketPath(home))
 	if err != nil {
 		t.Fatal(err)
@@ -145,8 +157,8 @@ func TestPeerUIDIsOurs(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = conn.Close() }()
-	uid, err := peerUID(conn.(*net.UnixConn))
-	if err != nil || uid != os.Getuid() {
-		t.Errorf("peerUID = %d, %v, want %d", uid, err, os.Getuid())
+	uid, pid, err := peer(conn.(*net.UnixConn))
+	if err != nil || uid != os.Getuid() || pid != os.Getpid() {
+		t.Errorf("peer = %d, %d, %v, want %d, %d", uid, pid, err, os.Getuid(), os.Getpid())
 	}
 }

@@ -86,8 +86,15 @@ func Lock(home string) (release func(), err error) {
 	return func() { _ = f.Close() }, nil
 }
 
-// Handler runs one command and returns the reply to send as JSON.
-type Handler func(ctx context.Context, cmd string) (any, error)
+// Handler runs one command and returns the reply to send as JSON. pid is
+// the calling process.
+type Handler func(ctx context.Context, cmd string, pid int) (any, error)
+
+// Refused is an error a Handler returns to tell the caller why it said no.
+// Other errors reach the caller without details.
+type Refused string
+
+func (r Refused) Error() string { return string(r) }
 
 // Listen opens the control socket in home. Take Lock first: the old socket
 // file is removed, which is only safe while no other daemon runs.
@@ -147,7 +154,7 @@ func serveConn(ctx context.Context, conn net.Conn, h Handler) {
 	if !ok {
 		return
 	}
-	uid, err := peerUID(uc)
+	uid, pid, err := peer(uc)
 	if err != nil || uid != os.Getuid() {
 		slog.Warn("control socket refused a caller", "uid", uid, "err", err)
 		writeReply(conn, reply{Error: "refused: not the user running tess serve"})
@@ -163,7 +170,13 @@ func serveConn(ctx context.Context, conn net.Conn, h Handler) {
 		writeReply(conn, reply{Error: "unknown command"})
 		return
 	}
-	v, err := h(ctx, cmd)
+	v, err := h(ctx, cmd, pid)
+	var refused Refused
+	if errors.As(err, &refused) {
+		slog.Warn("control command refused", "cmd", cmd, "pid", pid, "why", string(refused))
+		writeReply(conn, reply{Error: string(refused)})
+		return
+	}
 	if err != nil {
 		slog.Error("control command failed", "cmd", cmd, "err", err)
 		writeReply(conn, reply{Error: "command failed, see the tess serve log"})

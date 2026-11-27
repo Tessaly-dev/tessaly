@@ -102,6 +102,8 @@ function fakePasskeys(options: LoginOptions): PasskeyApi & { calls: string[] } {
     add: async () => undefined,
     verify: async () => undefined,
     remove: async () => undefined,
+    resetNotice: async () => null,
+    dismissResetNotice: async () => undefined,
   };
 }
 

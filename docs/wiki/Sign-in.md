@@ -62,6 +62,8 @@ The passkey routes run a WebAuthn ceremony in two steps. A `begin` route replies
 | `POST /api/v1/passkeys/register/begin`, `/finish` | Yes | Add a passkey. `finish` also takes `"name"`. A second passkey needs a fresh check |
 | `POST /api/v1/passkeys/verify/begin`, `/finish` | Yes | Check a passkey, which counts as fresh for 5 minutes |
 | `DELETE /api/v1/passkeys/{id}` | Yes, fresh | Remove a passkey and end its sessions |
+| `GET /api/v1/reset-notice` | Yes | `{"resetAt": "<time>"}` after `tess auth reset`, or `null` |
+| `DELETE /api/v1/reset-notice` | Yes | Dismiss the reset notice |
 
 ## Lost your passkeys: tess auth reset
 
@@ -71,14 +73,18 @@ Run this on the machine that runs `tess serve`:
 tess auth reset
 ```
 
-It asks you to type `reset`, then removes every passkey, ends every session and writes a new token. The old token stops working. In a terminal it prints a new sign-in link. Token sign-in is open again until you add a new passkey. Pass `--yes` to skip the question, for example in a script. Without a terminal and without `--yes` it changes nothing.
+It shows this machine's host name and asks you to type it, so a reset only happens on purpose and on the machine you meant. A script can pipe the name in, for example `hostname | tess auth reset`. Then it removes every passkey, ends every session and writes a new token. The old token stops working. In a terminal it prints a new sign-in link.
+
+The new token signs in once, within 15 minutes. If you reset while `tess serve` is stopped, the 15 minutes start when it starts. Add a passkey right after you sign in: once the token is used, it does not sign in again, and you need another reset. With `tess serve --allow-token-login` the token keeps working as before.
+
+The command refuses to run from an agent's terminal. Agents run as your OS user, so without this check an agent could reset sign-in and read the new token. The daemon walks the caller's process tree and refuses it when it runs under an agent that Tessaly started.
 
 - While `tess serve` runs, the command asks the daemon over its control socket, `~/.tessaly/run/control.sock`. The socket is mode 0600 in a 0700 folder, and the daemon refuses callers that run as another OS user. It is not part of the HTTP server, so no web page or network client can reach it.
 - While `tess serve` is stopped, the command changes the token file and `tessaly.db` itself. The daemon holds a lock file, `~/.tessaly/run/tess.lock`, while it runs, which is how the command tells the two cases apart. The lock also stops a second `tess serve` from using the same data folder.
 
-Each reset writes a row to the `auth_events` table in `tessaly.db`, and a running daemon logs a warning. Every session ends, so a reset you did not make shows up as being signed out.
+Each reset writes a row to the `auth_events` table in `tessaly.db`, and a running daemon logs a warning. Every session ends, so a reset you did not make shows up as being signed out. Whoever signs in next sees a notice that sign-in was reset, with the time, until they dismiss it.
 
-In Docker, run `docker exec tess tess auth reset --yes`, then read the new token with `docker exec tess cat /data/token`.
+In Docker, run `docker exec -it tess tess auth reset` and type the container's host name it shows. Then read the new token with `docker exec tess cat /data/token`.
 
 ## Changing the token
 

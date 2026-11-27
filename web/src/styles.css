@@ -384,3 +384,14 @@ textarea {
 .check-pending .check-bucket {
   color: var(--accent);
 }
+
+.notice {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  justify-content: space-between;
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  padding: 0.5rem 1rem;
+  margin-bottom: 1rem;
+}

@@ -47,6 +47,9 @@ func main() {
 }
 
 // run executes one tess command and returns the process exit code.
+// stdin is where tess reads answers. Tests replace it.
+var stdin io.Reader = os.Stdin
+
 func run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
 		fmt.Fprint(stderr, usage)
@@ -67,7 +70,7 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 			fmt.Fprint(stderr, "Usage: tess auth reset [--yes]\n")
 			return 2
 		}
-		return authReset(ctx, args[2:], os.Stdin, stdout, stderr)
+		return authReset(ctx, args[2:], stdin, stdout, stderr)
 	default:
 		fmt.Fprintf(stderr, "tess: unknown command %q\n\n%s", args[0], usage)
 		return 2
@@ -186,9 +189,9 @@ func serve(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "tess serve: %v\n", err)
 		return 1
 	}
-	go control.Serve(ctx, ctl, func(ctx context.Context, _ string) (any, error) {
+	go control.Serve(ctx, ctl, resetHandler(workspaces.AgentPIDs, func(ctx context.Context) (any, error) {
 		return resetRunning(ctx, signIn, db, tokenPath, local)
-	})
+	}))
 
 	github := forge.GitHub{}
 	watcher := checks.New(db, github, checks.DefaultEvery)
