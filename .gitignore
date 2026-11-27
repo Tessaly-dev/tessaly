@@ -12,3 +12,7 @@
 *.swp
 .idea/
 .vscode/
+
+# Playwright output
+web/test-results/
+web/playwright-report/

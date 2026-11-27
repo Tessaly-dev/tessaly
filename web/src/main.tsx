@@ -12,6 +12,12 @@ if (!root) throw new Error("missing #root element");
 // race on the fragment, which this call clears.
 const token = takeTokenFromHash();
 
+// Pasting a sign-in link into an open tab changes only the fragment, which
+// does not reload the page. Reload so the token above is read.
+window.addEventListener("hashchange", () => {
+  if (window.location.hash.startsWith("#token=")) window.location.reload();
+});
+
 createRoot(root).render(
   <StrictMode>
     <App initialToken={token} />
