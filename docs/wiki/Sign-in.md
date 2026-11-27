@@ -6,7 +6,7 @@ Every API call needs you to sign in. This keeps other people and programs on the
 
 The first time `tess serve` starts, it writes a random token to `~/.tessaly/token`. Only your OS user can read that file (mode 0600), and the folder is mode 0700. `tess serve` refuses to start if other users can read either one.
 
-To move the data folder, set `TESSALY_HOME` to an absolute path.
+To move the data folder, set `TESSALY_HOME` to an absolute path. The folder also holds `tessaly.db`, Tessaly's state.
 
 ## Signing in
 

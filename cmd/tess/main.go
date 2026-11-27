@@ -18,6 +18,7 @@ import (
 	"github.com/tessaly-dev/tessaly/internal/auth"
 	"github.com/tessaly-dev/tessaly/internal/config"
 	"github.com/tessaly-dev/tessaly/internal/server"
+	"github.com/tessaly-dev/tessaly/internal/store"
 	"github.com/tessaly-dev/tessaly/internal/version"
 	"github.com/tessaly-dev/tessaly/web"
 )
@@ -105,7 +106,15 @@ func serve(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	fmt.Fprintf(stdout, "%s listening on http://%s\n", version.String(), addr)
 	printSignIn(stdout, addr, token, tokenPath)
 
-	cfg := server.Config{Port: *port, UI: web.Dist(), Auth: auth.New(token)}
+	// Migrations run to the end even if Ctrl-C arrives meanwhile.
+	db, err := store.Open(context.WithoutCancel(ctx), filepath.Join(home, "tessaly.db"))
+	if err != nil {
+		fmt.Fprintf(stderr, "tess serve: %v\n", err)
+		return 1
+	}
+	defer func() { _ = db.Close() }()
+
+	cfg := server.Config{Port: *port, UI: web.Dist(), Auth: auth.New(token), Store: db}
 	if err := server.Serve(ctx, ln, server.Handler(cfg)); err != nil {
 		fmt.Fprintf(stderr, "tess serve: %v\n", err)
 		return 1

@@ -16,11 +16,11 @@ linters:
         - fmt.Fprintln
   exclusions:
     rules:
-      # Tests make files with loose modes, read temp files and send bare
-      # cookies on purpose, to check that the code rejects them.
+      # Tests make files with loose modes, read temp files, send bare cookies
+      # and run git on temp folders on purpose, to check that the code copes.
       - path: _test\.go
         linters: [gosec]
-        text: "G124|G302|G304"
+        text: "G124|G204|G302|G304"
 
 formatters:
   enable:

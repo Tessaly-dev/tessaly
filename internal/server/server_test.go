@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -16,6 +17,7 @@ import (
 	"time"
 
 	"github.com/tessaly-dev/tessaly/internal/auth"
+	"github.com/tessaly-dev/tessaly/internal/store"
 	"github.com/tessaly-dev/tessaly/internal/version"
 )
 
@@ -32,8 +34,19 @@ var testUI = fstest.MapFS{
 // testToken is a well-formed token: 43 base64url characters.
 const testToken = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
 
-func testHandler(ui fstest.MapFS) http.Handler {
-	return Handler(Config{Port: testPort, UI: ui, Auth: auth.New(testToken)})
+func testHandler(t *testing.T, ui fstest.MapFS) http.Handler {
+	t.Helper()
+	return Handler(testConfig(t, testPort, ui))
+}
+
+func testConfig(t *testing.T, port int, ui fstest.MapFS) Config {
+	t.Helper()
+	db, err := store.Open(context.Background(), filepath.Join(t.TempDir(), "tessaly.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	return Config{Port: port, UI: ui, Auth: auth.New(testToken), Store: db}
 }
 
 func do(t *testing.T, h http.Handler, method, target, host string) *httptest.ResponseRecorder {
@@ -70,7 +83,7 @@ func TestAddr(t *testing.T) {
 }
 
 func TestHealth(t *testing.T) {
-	h := testHandler(testUI)
+	h := testHandler(t, testUI)
 
 	rec := do(t, h, http.MethodGet, "/healthz", "127.0.0.1:7777")
 	if rec.Code != http.StatusOK {
@@ -89,7 +102,7 @@ func TestHealth(t *testing.T) {
 }
 
 func TestHealthRejectsOtherMethods(t *testing.T) {
-	h := testHandler(testUI)
+	h := testHandler(t, testUI)
 	for _, m := range []string{http.MethodPost, http.MethodPut, http.MethodDelete} {
 		rec := do(t, h, m, "/healthz", "127.0.0.1:7777")
 		if rec.Code != http.StatusMethodNotAllowed {
@@ -99,7 +112,7 @@ func TestHealthRejectsOtherMethods(t *testing.T) {
 }
 
 func TestHostCheck(t *testing.T) {
-	h := testHandler(testUI)
+	h := testHandler(t, testUI)
 	tests := []struct {
 		host string
 		want int
@@ -122,7 +135,7 @@ func TestHostCheck(t *testing.T) {
 }
 
 func TestSecurityHeaders(t *testing.T) {
-	h := testHandler(testUI)
+	h := testHandler(t, testUI)
 	// Headers must be set on rejected requests too.
 	for _, host := range []string{"127.0.0.1:7777", "evil.example"} {
 		rec := do(t, h, http.MethodGet, "/", host)
@@ -140,7 +153,7 @@ func TestSecurityHeaders(t *testing.T) {
 }
 
 func TestUI(t *testing.T) {
-	h := testHandler(testUI)
+	h := testHandler(t, testUI)
 	tests := []struct {
 		method string
 		path   string
@@ -185,7 +198,7 @@ func TestUIPathTraversal(t *testing.T) {
 }
 
 func TestUINotBuilt(t *testing.T) {
-	h := testHandler(fstest.MapFS{".gitkeep": {}})
+	h := testHandler(t, fstest.MapFS{".gitkeep": {}})
 	rec := do(t, h, http.MethodGet, "/", "127.0.0.1:7777")
 	if rec.Code != http.StatusServiceUnavailable {
 		t.Errorf("status = %d, want 503", rec.Code)
@@ -201,7 +214,7 @@ func TestServe(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
-	go func() { done <- Serve(ctx, ln, Handler(Config{Port: port, UI: testUI, Auth: auth.New(testToken)})) }()
+	go func() { done <- Serve(ctx, ln, Handler(testConfig(t, port, testUI))) }()
 
 	resp, err := http.Get("http://127.0.0.1:" + strconv.Itoa(port) + "/healthz")
 	if err != nil {
@@ -255,7 +268,7 @@ func sessionCookie(t *testing.T, rec *httptest.ResponseRecorder) *http.Cookie {
 }
 
 func TestAPINeedsSignIn(t *testing.T) {
-	h := testHandler(testUI)
+	h := testHandler(t, testUI)
 	for _, p := range []string{"/api/v1/session", "/api/v1/unknown", "/api/"} {
 		if rec := send(t, h, http.MethodGet, p, "", nil, nil); rec.Code != http.StatusUnauthorized {
 			t.Errorf("GET %s without session = %d, want 401", p, rec.Code)
@@ -268,7 +281,7 @@ func TestAPINeedsSignIn(t *testing.T) {
 }
 
 func TestAPILoginFlow(t *testing.T) {
-	h := testHandler(testUI)
+	h := testHandler(t, testUI)
 
 	if rec := send(t, h, http.MethodPost, "/api/v1/login", `{"token":"wrong"}`, nil, nil); rec.Code != http.StatusUnauthorized {
 		t.Fatalf("login with wrong token = %d, want 401", rec.Code)
@@ -299,7 +312,7 @@ func TestAPILoginFlow(t *testing.T) {
 }
 
 func TestAPIRejectsCrossSiteRequests(t *testing.T) {
-	h := testHandler(testUI)
+	h := testHandler(t, testUI)
 	body := `{"token":"` + testToken + `"}`
 	tests := []struct {
 		name    string
