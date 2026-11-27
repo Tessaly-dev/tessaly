@@ -38,6 +38,27 @@ checksum:
   name_template: checksums.txt
   algorithm: sha256
 
+# One multi-arch image on GHCR. The release workflow signs it and attests its
+# provenance after GoReleaser pushes it.
+dockers_v2:
+  - images:
+      - ghcr.io/tessaly-dev/tessaly
+    tags:
+      - "v{{ .Version }}"
+      # Pre-releases never move "latest".
+      - "{{ if not .Prerelease }}latest{{ end }}"
+    platforms:
+      - linux/amd64
+      - linux/arm64
+    # An SBOM attestation from buildkit, pushed next to the image.
+    sbom: true
+    labels:
+      org.opencontainers.image.title: tess
+      org.opencontainers.image.source: https://github.com/Tessaly-dev/tessaly
+      org.opencontainers.image.version: "v{{ .Version }}"
+      org.opencontainers.image.revision: "{{ .FullCommit }}"
+      org.opencontainers.image.licenses: Apache-2.0
+
 # One SPDX SBOM per archive, made by syft.
 sboms:
   - artifacts: archive

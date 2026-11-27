@@ -5,6 +5,7 @@
 - [Workspaces](Workspaces)
 - [Pull requests](Pull-requests)
 - [Agents](Agents)
+- [Docker](Docker)
 - [Dev setup](Dev-setup)
 - [Releasing](Releasing)
 - [Threat model](Threat-model)
