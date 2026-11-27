@@ -4,6 +4,7 @@ import { authApi, type AuthApi } from "./api";
 import { fetchHealth, type Health } from "./health";
 import { Repos } from "./Repos";
 import { reposApi, type Repo, type ReposApi } from "./repos";
+import { Board } from "./Board";
 import { Home } from "./Home";
 import { useWorkspaces } from "./useWorkspaces";
 import { workspacesApi, type WorkspacesApi } from "./workspaces";
@@ -95,10 +96,11 @@ export function App({ load = fetchHealth, auth = defaultAuth, initialToken = nul
   );
 }
 
-type Tab = "home" | "repos";
+type Tab = "home" | "board" | "repos";
 
 const tabs: { key: Tab; label: string }[] = [
   { key: "home", label: "Home" },
+  { key: "board", label: "Board" },
   { key: "repos", label: "Repositories" },
 ];
 
@@ -137,6 +139,16 @@ function SignedIn({ repos, workspaces }: { repos: ReposApi; workspaces: Workspac
           refresh={work.refresh}
           selected={selected}
           onSelect={setSelected}
+        />
+      </div>
+      <div role="tabpanel" id="panel-board" aria-labelledby="tab-board" hidden={tab !== "board"}>
+        <Board
+          list={work.list}
+          repos={repoList}
+          onOpen={(id) => {
+            setSelected(id);
+            setTab("home");
+          }}
         />
       </div>
       <div role="tabpanel" id="panel-repos" aria-labelledby="tab-repos" hidden={tab !== "repos"}>

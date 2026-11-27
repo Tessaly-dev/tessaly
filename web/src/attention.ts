@@ -57,3 +57,18 @@ export function groupForHome(list: Workspace[]): { key: Attention; title: string
     .map((g) => ({ ...g, items: list.filter((ws) => attention(ws) === g.key) }))
     .filter((g) => g.items.length > 0);
 }
+
+// The board shows every stage as a column, in the order work moves through.
+export const boardColumns: { key: Attention; title: string }[] = [
+  { key: "idle", title: "Not started" },
+  { key: "running", title: "Running" },
+  { key: "input", title: "Needs your input" },
+  { key: "review", title: "Ready to review" },
+  { key: "failed", title: "Failed" },
+  { key: "archived", title: "Archived" },
+];
+
+// groupForBoard sorts workspaces into every board column, empty ones included.
+export function groupForBoard(list: Workspace[]): { key: Attention; title: string; items: Workspace[] }[] {
+  return boardColumns.map((c) => ({ ...c, items: list.filter((ws) => attention(ws) === c.key) }));
+}

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { describe, expect, it } from "vitest";
-import { attention, groupForHome, reason } from "./attention";
+import { attention, groupForBoard, groupForHome, reason } from "./attention";
 import type { Workspace } from "./workspaces";
 
 function ws(over: Partial<Workspace>): Workspace {
@@ -43,6 +43,20 @@ describe("groupForHome", () => {
       ["input", [3]],
       ["review", [2, 5]],
       ["running", [1]],
+    ]);
+  });
+});
+
+describe("groupForBoard", () => {
+  it("keeps every column, archived and empty ones too, in stage order", () => {
+    const list = [ws({ id: 1, state: "archived" }), ws({ id: 2, state: "running" })];
+    expect(groupForBoard(list).map((c) => [c.key, c.items.map((w) => w.id)])).toEqual([
+      ["idle", []],
+      ["running", [2]],
+      ["input", []],
+      ["review", []],
+      ["failed", []],
+      ["archived", [1]],
     ]);
   });
 });

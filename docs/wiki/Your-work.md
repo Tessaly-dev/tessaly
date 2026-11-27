@@ -1,6 +1,6 @@
 # Your work
 
-The Home tab lists every workspace by what it needs from you. The most urgent work sits at the top:
+The Home tab lists every workspace that is not archived by what it needs from you. The most urgent work sits at the top:
 
 | Group | What is in it |
 | --- | --- |
@@ -19,6 +19,10 @@ Archived workspaces do not show. Empty groups are hidden. The list reloads every
 Click a workspace to open it beside the list. You see its repo, branch and state, and its agent panel: start or stop the agent, and type into its live terminal. On a phone the panel shows below the list.
 
 Press New workspace under the list to create one. See [Workspaces](Workspaces).
+
+## Board
+
+The Board tab shows every workspace as a card in a column for its stage: Not started, Running, Needs your input, Ready to review, Failed and Archived. Use it for an overview of all your tasks at once. Click a card to open the workspace on the Home tab. Archived cards show the branch that was kept, and do not open.
 
 ## Repositories
 
