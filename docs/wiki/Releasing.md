@@ -22,7 +22,7 @@ There is no native Windows build. Windows users run the Linux build in WSL2.
 
    ```sh
    git switch main && git pull
-   git tag -s v0.1.0 -m "v0.1.0"
+   git tag -a v0.1.0 -m "v0.1.0"
    git push origin v0.1.0
    ```
 
