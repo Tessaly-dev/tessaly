@@ -75,24 +75,41 @@ func do(t *testing.T, h http.Handler, method, target, host string) *httptest.Res
 
 func TestAddr(t *testing.T) {
 	tests := []struct {
+		listen  string
 		port    int
 		want    string
 		wantErr bool
 	}{
-		{7777, "127.0.0.1:7777", false},
-		{1, "127.0.0.1:1", false},
-		{65535, "127.0.0.1:65535", false},
-		{0, "", true},
-		{-1, "", true},
-		{65536, "", true},
+		{"127.0.0.1", 7777, "127.0.0.1:7777", false},
+		{"127.0.0.1", 1, "127.0.0.1:1", false},
+		{"127.0.0.1", 65535, "127.0.0.1:65535", false},
+		{"0.0.0.0", 7777, "0.0.0.0:7777", false},
+		{"::1", 7777, "[::1]:7777", false},
+		{"127.0.0.1", 0, "", true},
+		{"127.0.0.1", -1, "", true},
+		{"127.0.0.1", 65536, "", true},
+		{"", 7777, "", true},
+		{"localhost", 7777, "", true},
+		{"0.0.0.0:80", 7777, "", true},
+		{"fe80::1%eth0", 7777, "", true},
 	}
 	for _, tt := range tests {
-		got, err := Addr(tt.port)
+		got, err := Addr(tt.listen, tt.port)
 		if (err != nil) != tt.wantErr {
-			t.Errorf("Addr(%d) error = %v, wantErr %v", tt.port, err, tt.wantErr)
+			t.Errorf("Addr(%q, %d) error = %v, wantErr %v", tt.listen, tt.port, err, tt.wantErr)
 		}
 		if got != tt.want {
-			t.Errorf("Addr(%d) = %q, want %q", tt.port, got, tt.want)
+			t.Errorf("Addr(%q, %d) = %q, want %q", tt.listen, tt.port, got, tt.want)
+		}
+	}
+}
+
+func TestIsLoopback(t *testing.T) {
+	for listen, want := range map[string]bool{
+		"127.0.0.1": true, "::1": true, "0.0.0.0": false, "::": false, "192.168.1.2": false, "nope": false,
+	} {
+		if got := IsLoopback(listen); got != want {
+			t.Errorf("IsLoopback(%q) = %v, want %v", listen, got, want)
 		}
 	}
 }

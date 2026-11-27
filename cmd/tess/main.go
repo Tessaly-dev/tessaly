@@ -68,7 +68,9 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 func serve(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("serve", flag.ContinueOnError)
 	fs.SetOutput(stderr)
-	port := fs.Int("port", server.DefaultPort, "port to listen on (always bound to 127.0.0.1)")
+	port := fs.Int("port", server.DefaultPort, "port to listen on")
+	listen := fs.String("listen", server.DefaultListen,
+		"IP address to listen on. Keep 127.0.0.1 unless tess runs in a container")
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return 0
@@ -80,11 +82,14 @@ func serve(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 
-	addr, err := server.Addr(*port)
+	addr, err := server.Addr(*listen, *port)
 	if err != nil {
 		fmt.Fprintf(stderr, "tess serve: %v\n", err)
 		return 2
 	}
+	// The browser always reaches tess as 127.0.0.1, because the Host check
+	// accepts nothing else. In a container, that is the published port.
+	local, _ := server.Addr(server.DefaultListen, *port)
 
 	home, err := config.Home()
 	if err == nil {
@@ -108,7 +113,11 @@ func serve(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	}
 
 	fmt.Fprintf(stdout, "%s listening on http://%s\n", version.String(), addr)
-	printSignIn(stdout, addr, token, tokenPath)
+	if !server.IsLoopback(*listen) {
+		fmt.Fprintf(stderr, "tess serve: listening on %s, not only 127.0.0.1. "+
+			"Requests must still use http://%s, and only a container should do this.\n", *listen, local)
+	}
+	printSignIn(stdout, local, token, tokenPath)
 
 	// Startup steps such as migrations run to the end even if Ctrl-C arrives
 	// meanwhile.

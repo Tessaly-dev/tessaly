@@ -12,6 +12,7 @@ import (
 	"io/fs"
 	"net"
 	"net/http"
+	"net/netip"
 	"path"
 	"strconv"
 	"strings"
@@ -30,16 +31,32 @@ import (
 // DefaultPort is the port "tess serve" uses when none is given.
 const DefaultPort = 7777
 
-// loopback is the only address Tessaly binds to. Remote access goes through an
-// SSH tunnel, a VPN or a reverse proxy, never through a wider bind.
+// loopback is the address Tessaly binds to by default. Remote access goes
+// through an SSH tunnel, a VPN or a reverse proxy. A container needs a wider
+// bind to publish its port, which "tess serve --listen" allows. The Host check
+// still only accepts 127.0.0.1 and localhost, whatever the bind.
 const loopback = "127.0.0.1"
 
-// Addr returns the listen address for port, or an error if the port is out of range.
-func Addr(port int) (string, error) {
+// DefaultListen is the address "tess serve" binds to when none is given.
+const DefaultListen = loopback
+
+// Addr returns the address to listen on for an IP and a port, or an error if
+// the IP is not a plain IP address or the port is out of range.
+func Addr(listen string, port int) (string, error) {
 	if port < 1 || port > 65535 {
 		return "", fmt.Errorf("port %d out of range 1-65535", port)
 	}
-	return net.JoinHostPort(loopback, strconv.Itoa(port)), nil
+	ip, err := netip.ParseAddr(listen)
+	if err != nil || ip.Zone() != "" {
+		return "", fmt.Errorf("listen address %q is not an IP address", listen)
+	}
+	return net.JoinHostPort(ip.String(), strconv.Itoa(port)), nil
+}
+
+// IsLoopback reports whether listen only accepts connections from this machine.
+func IsLoopback(listen string) bool {
+	ip, err := netip.ParseAddr(listen)
+	return err == nil && ip.IsLoopback()
 }
 
 // Config holds what the HTTP handler needs.

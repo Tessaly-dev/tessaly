@@ -28,7 +28,9 @@ func TestRun(t *testing.T) {
 		{"serve high port", []string{"serve", "--port", "70000"}, 2, "", "out of range"},
 		{"serve extra arg", []string{"serve", "0.0.0.0"}, 2, "", "unexpected argument"},
 		{"serve unknown flag", []string{"serve", "--addr", "0.0.0.0:7777"}, 2, "", "flag provided but not defined"},
-		{"serve help", []string{"serve", "-h"}, 0, "", "-port"},
+		{"serve help", []string{"serve", "-h"}, 0, "", "-listen"},
+		{"serve bad listen", []string{"serve", "--listen", "example.com"}, 2, "", "not an IP address"},
+		{"serve listen with port", []string{"serve", "--listen", "0.0.0.0:7777"}, 2, "", "not an IP address"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -73,6 +75,24 @@ func TestServeStopsOnCancel(t *testing.T) {
 	}
 	if !strings.Contains(stdout.String(), "Sign in with the token in "+filepath.Join(home, "token")) {
 		t.Errorf("stdout = %q, want token path hint", stdout.String())
+	}
+}
+
+func TestServeListenWarnsOffLoopback(t *testing.T) {
+	t.Setenv("TESSALY_HOME", t.TempDir()+"/home")
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	var stdout, stderr bytes.Buffer
+	code := run(ctx, []string{"serve", "--listen", "0.0.0.0", "--port", "47779"}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0 (stderr: %s)", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "listening on http://0.0.0.0:47779") {
+		t.Errorf("stdout = %q, want listen line", stdout.String())
+	}
+	if !strings.Contains(stderr.String(), "only a container should do this") {
+		t.Errorf("stderr = %q, want a warning", stderr.String())
 	}
 }
 
