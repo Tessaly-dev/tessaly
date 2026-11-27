@@ -18,11 +18,13 @@ The repo needs at least one commit.
 | State | Meaning |
 | --- | --- |
 | `creating` | The branch and worktree are being made |
-| `ready` | The worktree exists |
+| `ready` | The worktree exists and no agent has run yet |
+| `running` | An agent runs in the worktree. See [Agents](Agents) |
+| `exited` | The agent has exited. Its exit code shows next to the workspace |
 | `failed` | A step failed. The error shows next to the workspace |
 | `archived` | The worktree is gone. The branch stays |
 
-Only these moves are allowed: `creating` to `ready` or `failed`, `ready` to `archived` or `failed`, and `failed` to `archived`. The table lives in `internal/workspace/state.go`.
+Only these moves are allowed: `creating` to `ready` or `failed`, `ready` to `running`, `archived` or `failed`, `running` to `exited`, `exited` to `running` or `archived`, and `failed` to `archived`. The table lives in `internal/workspace/state.go`.
 
 ## Archive a workspace
 
@@ -38,4 +40,4 @@ All routes need a signed-in session.
 | --- | --- | --- |
 | `GET /api/v1/workspaces` | none | `200` with the list, newest first |
 | `POST /api/v1/workspaces` | `{"repoId": 1, "name": "fix-login"}` | `201` with the workspace. `400` for a bad name or unknown repo, `409` if the branch or name exists |
-| `POST /api/v1/workspaces/{id}/archive` | none | `200` with the workspace. `409` if it has changes or is already archived |
+| `POST /api/v1/workspaces/{id}/archive` | none | `200` with the workspace. `409` if it has changes, an agent runs, or it is already archived |

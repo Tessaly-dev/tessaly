@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import type { Repo } from "./repos";
-import { slugify, workspacesApi, type Workspace, type WorkspacesApi } from "./workspaces";
+import { AgentPanel } from "./AgentPanel";
+import { slugify, workspacesApi, type Agent, type Workspace, type WorkspacesApi } from "./workspaces";
 
 const defaultApi = workspacesApi();
 
@@ -10,6 +11,8 @@ export function Workspaces({ repos, api = defaultApi }: { repos: Repo[]; api?: W
   const [repoId, setRepoId] = useState<number | null>(null);
   const [name, setName] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [agents, setAgents] = useState<Agent[]>([]);
+  const [open, setOpen] = useState<number | null>(null);
 
   const refresh = useCallback(async () => {
     try {
@@ -21,7 +24,11 @@ export function Workspaces({ repos, api = defaultApi }: { repos: Repo[]; api?: W
 
   useEffect(() => {
     void refresh();
-  }, [refresh]);
+    api
+      .agents()
+      .then(setAgents)
+      .catch(() => setAgents([]));
+  }, [refresh, api]);
 
   // Pick the first repo until the user picks one, and drop a removed one.
   const selected = repos.find((r) => r.id === repoId) ?? repos[0];
@@ -57,11 +64,22 @@ export function Workspaces({ repos, api = defaultApi }: { repos: Repo[]; api?: W
               <strong>{w.slug}</strong> in {repoName(w.repoId)} <span className="state">{w.state}</span>{" "}
               <code>{w.branch}</code>
               {w.error && <span className="ws-error"> {w.error}</span>}{" "}
-              {w.state !== "archived" && (
+              {w.state !== "archived" && w.state !== "running" && (
                 <button type="button" onClick={() => void run(() => api.archive(w.id))} aria-label={`Archive ${w.slug}`}>
                   Archive
                 </button>
+              )}{" "}
+              {["ready", "running", "exited"].includes(w.state) && (
+                <button
+                  type="button"
+                  onClick={() => setOpen(open === w.id ? null : w.id)}
+                  aria-expanded={open === w.id}
+                  aria-label={`Agent for ${w.slug}`}
+                >
+                  Agent
+                </button>
               )}
+              {open === w.id && <AgentPanel ws={w} agents={agents} api={api} onChange={refresh} />}
             </li>
           ))}
         </ul>

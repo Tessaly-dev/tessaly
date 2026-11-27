@@ -2,5 +2,6 @@
 - [Sign in](Sign-in)
 - [Repositories](Repositories)
 - [Workspaces](Workspaces)
+- [Agents](Agents)
 - [Dev setup](Dev-setup)
 - [Threat model](Threat-model)

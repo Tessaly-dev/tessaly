@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/tessaly-dev/tessaly/internal/auth"
+	"github.com/tessaly-dev/tessaly/internal/config"
 	"github.com/tessaly-dev/tessaly/internal/store"
 	"github.com/tessaly-dev/tessaly/internal/version"
 	"github.com/tessaly-dev/tessaly/internal/workspace"
@@ -49,8 +50,10 @@ type Config struct {
 	Auth *auth.Auth
 	// Store holds repos and other state.
 	Store *store.Store
-	// Workspaces creates and archives workspaces.
+	// Workspaces creates and archives workspaces and runs their agents.
 	Workspaces *workspace.Manager
+	// Agents are the agent CLIs from config.toml, by name.
+	Agents map[string]config.Agent
 }
 
 // Handler returns the HTTP handler for cfg.
@@ -73,6 +76,11 @@ func Handler(cfg Config) http.Handler {
 	api.HandleFunc("GET /api/v1/workspaces", ws.list)
 	api.HandleFunc("POST /api/v1/workspaces", ws.create)
 	api.HandleFunc("POST /api/v1/workspaces/{id}/archive", ws.archive)
+	agents := agentHandlers{agents: cfg.Agents, ws: ws}
+	api.HandleFunc("GET /api/v1/agents", agents.list)
+	api.HandleFunc("POST /api/v1/workspaces/{id}/start", agents.start)
+	api.HandleFunc("POST /api/v1/workspaces/{id}/stop", agents.stop)
+	api.HandleFunc("GET /api/v1/workspaces/{id}/output", agents.output)
 	// Every other API path needs a session too, so unknown paths answer 401
 	// to callers who are not signed in, and 404 to those who are.
 	mux.Handle("/api/", cfg.Auth.Require(api))

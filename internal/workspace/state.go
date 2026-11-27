@@ -11,8 +11,12 @@ type State string
 const (
 	// Creating: the branch and worktree are being made.
 	Creating State = "creating"
-	// Ready: the worktree exists and nothing runs in it.
+	// Ready: the worktree exists and no agent has run yet.
 	Ready State = "ready"
+	// Running: an agent runs in the worktree.
+	Running State = "running"
+	// Exited: the agent has exited. Its exit code is stored.
+	Exited State = "exited"
 	// Archived: the worktree is gone and the branch is kept.
 	Archived State = "archived"
 	// Failed: a step failed. The error text says which.
@@ -22,7 +26,9 @@ const (
 // transitions lists every allowed move. Anything not listed is refused.
 var transitions = map[State][]State{
 	Creating: {Ready, Failed},
-	Ready:    {Archived, Failed},
+	Ready:    {Running, Archived, Failed},
+	Running:  {Exited},
+	Exited:   {Running, Archived},
 	Failed:   {Archived},
 	Archived: {},
 }
