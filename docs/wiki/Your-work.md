@@ -5,7 +5,7 @@ The Home tab lists every workspace that is not archived by what it needs from yo
 | Group | What is in it |
 | --- | --- |
 | Needs your input | Agents that run but have been quiet for 5 seconds, so they probably wait for an answer. Also runs that `tess serve` cut off when it stopped, with a Resume button when the agent has a `resume` command |
-| Ready to review | Agents that exited with code 0, and agents you stopped |
+| Ready to review | Agents that exited with code 0, agents you stopped, and work with an open pull request. The line under each shows its CI check status, see [Pull requests](Pull-requests#check-status) |
 | Failed | Agents that exited with another code, and workspaces whose setup failed |
 | Running | Agents that are working and printing output |
 | Not started | Workspaces where no agent has run yet |

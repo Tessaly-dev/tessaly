@@ -60,3 +60,18 @@ describe("groupForBoard", () => {
     ]);
   });
 });
+
+describe("reason with a pull request", () => {
+  it("names the check status", () => {
+    const done = ws({ state: "exited", exitCode: 0, prUrl: "https://github.com/a/b/pull/1" });
+    expect(reason(done)).toBe("Pull request open");
+    expect(reason({ ...done, checks: { state: "fail", updatedAt: "" } })).toBe("Pull request open, checks failing");
+    expect(reason({ ...done, checks: { state: "pending", updatedAt: "" } })).toBe("Pull request open, checks running");
+    expect(reason({ ...done, checks: { state: "pass", updatedAt: "" } })).toBe("Pull request open, checks passed");
+    expect(attention({ ...done, checks: { state: "fail", updatedAt: "" } })).toBe("review");
+    // Shipped by hand, with no agent run.
+    const manual = ws({ state: "ready", prUrl: "https://github.com/a/b/pull/2" });
+    expect(attention(manual)).toBe("review");
+    expect(reason(manual)).toBe("Pull request open");
+  });
+});

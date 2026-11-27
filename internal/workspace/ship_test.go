@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/tessaly-dev/tessaly/internal/forge"
 	"github.com/tessaly-dev/tessaly/internal/store"
 )
 
@@ -25,6 +26,10 @@ func (f *fakeForge) OpenPR(_ context.Context, _, branch, title, body string) (st
 	}
 	f.opened = append(f.opened, branch+"|"+title+"|"+body)
 	return "https://github.com/acme/app/pull/7", nil
+}
+
+func (f *fakeForge) Checks(context.Context, string, string) ([]forge.Check, error) {
+	return nil, nil
 }
 
 // shipSetup returns a manager and a workspace whose repo has a bare

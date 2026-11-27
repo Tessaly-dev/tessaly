@@ -21,6 +21,8 @@ import (
 
 // Forge opens pull requests on a code host.
 type Forge interface {
+	// Checks returns the CI checks on the pull request at prURL.
+	Checks(ctx context.Context, dir, prURL string) ([]Check, error)
 	// OpenPR opens a pull request from branch, which must already be
 	// pushed, into the repo's default branch. dir is a work tree of the
 	// repo. It returns the pull request's https URL. When one is already
@@ -56,7 +58,8 @@ func (g GitHub) OpenPR(ctx context.Context, dir, branch, title, body string) (st
 	return checkURL(strings.TrimSpace(lines[len(lines)-1]))
 }
 
-// run runs gh with args in dir, with stdin, and returns trimmed stdout.
+// run runs gh with args in dir, with stdin, and returns trimmed stdout. When
+// gh fails, it returns stdout as well as the error.
 func (g GitHub) run(ctx context.Context, dir, stdin string, args ...string) (string, error) {
 	bin := g.Bin
 	if bin == "" {
@@ -86,7 +89,7 @@ func (g GitHub) run(ctx context.Context, dir, stdin string, args ...string) (str
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
-		return "", fmt.Errorf("gh %s %s: %s", args[0], args[1], gitx.Redact(strings.TrimSpace(stderr.String())))
+		return strings.TrimSpace(stdout.String()), fmt.Errorf("gh %s %s: %s", args[0], args[1], gitx.Redact(strings.TrimSpace(stderr.String())))
 	}
 	return strings.TrimSpace(stdout.String()), nil
 }

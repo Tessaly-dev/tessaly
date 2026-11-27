@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/tessaly-dev/tessaly/internal/auth"
+	"github.com/tessaly-dev/tessaly/internal/checks"
 	"github.com/tessaly-dev/tessaly/internal/config"
 	"github.com/tessaly-dev/tessaly/internal/forge"
 	"github.com/tessaly-dev/tessaly/internal/server"
@@ -131,6 +132,10 @@ func serve(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 
+	github := forge.GitHub{}
+	watcher := checks.New(db, github, checks.DefaultEvery)
+	go watcher.Run(ctx)
+
 	cfg := server.Config{
 		Port:       *port,
 		UI:         web.Dist(),
@@ -138,7 +143,8 @@ func serve(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 		Store:      db,
 		Workspaces: workspaces,
 		Agents:     settings.Agents,
-		Forge:      forge.GitHub{},
+		Forge:      github,
+		Checks:     watcher,
 	}
 	// Agents must not outlive the daemon. Stop them once serving ends,
 	// whether by Ctrl-C or an error.

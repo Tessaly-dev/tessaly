@@ -26,7 +26,8 @@ export function attention(ws: Workspace): Attention {
       if (ws.ended === "stopped" || ws.exitCode === 0) return "review";
       return "failed";
     default:
-      return "idle";
+      // A workspace shipped by hand, with no agent run, waits for review too.
+      return ws.prUrl ? "review" : "idle";
   }
 }
 
@@ -36,7 +37,7 @@ export function reason(ws: Workspace): string {
     case "creating":
       return "Setting up the worktree";
     case "ready":
-      return "No agent has run yet";
+      return ws.prUrl ? prReason(ws) : "No agent has run yet";
     case "running":
       return ws.waiting ? "Quiet for a while, probably waiting for you" : "Working";
     case "failed":
@@ -45,9 +46,24 @@ export function reason(ws: Workspace): string {
       return "Archived";
   }
   if (ws.ended === "interrupted") return "Cut off when tess stopped";
+  if (ws.prUrl) return prReason(ws);
   if (ws.ended === "stopped") return "Stopped by you";
   if (ws.exitCode === 0) return "Finished";
   return `Exited with code ${ws.exitCode ?? "unknown"}`;
+}
+
+// prReason sums up a workspace whose pull request is open.
+function prReason(ws: Workspace): string {
+  switch (ws.checks?.state) {
+    case "fail":
+      return "Pull request open, checks failing";
+    case "pending":
+      return "Pull request open, checks running";
+    case "pass":
+      return "Pull request open, checks passed";
+    default:
+      return "Pull request open";
+  }
 }
 
 // groupForHome sorts workspaces into the home groups, keeping the list's

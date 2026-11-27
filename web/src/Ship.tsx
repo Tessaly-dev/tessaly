@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useState, type FormEvent } from "react";
 import { prLabel, ship as shipApi, titleFromSlug } from "./ship";
-import type { Workspace } from "./workspaces";
+import type { Check, ChecksSummary, Workspace } from "./workspaces";
 
 type Props = {
   ws: Workspace;
@@ -38,6 +38,7 @@ export function Ship({ ws, onChange, ship = shipApi }: Props) {
     return (
       <section aria-label="Pull request" className="ship">
         {ws.prUrl && <PRLink url={ws.prUrl} />}
+        {ws.prUrl && ws.checks && <Checks summary={ws.checks} />}
         <p className="hint">Stop the agent to ship its changes.</p>
       </section>
     );
@@ -46,6 +47,7 @@ export function Ship({ ws, onChange, ship = shipApi }: Props) {
   return (
     <section aria-label="Pull request" className="ship">
       {ws.prUrl && <PRLink url={ws.prUrl} />}
+      {ws.prUrl && ws.checks && <Checks summary={ws.checks} />}
       <form onSubmit={submit}>
         <label>
           {open ? "Commit message" : "Title"}
@@ -68,6 +70,44 @@ export function Ship({ ws, onChange, ship = shipApi }: Props) {
       </form>
       {done && <p role="status">{done}</p>}
       {error && <p role="alert">{error}</p>}
+    </section>
+  );
+}
+
+const bucketText: Record<Check["bucket"], string> = {
+  pass: "Passed",
+  fail: "Failed",
+  pending: "Running",
+  skipping: "Skipped",
+  cancel: "Cancelled",
+};
+
+const stateText = { pass: "All checks passed", fail: "Some checks failed", pending: "Checks are running", none: "No checks" };
+
+// Checks lists the pull request's CI checks, worst first.
+function Checks({ summary }: { summary: ChecksSummary }) {
+  const order: Check["bucket"][] = ["fail", "cancel", "pending", "pass", "skipping"];
+  const list = [...(summary.checks ?? [])].sort((a, b) => order.indexOf(a.bucket) - order.indexOf(b.bucket));
+  return (
+    <section className="checks" aria-label="Checks">
+      {summary.state && <p className={`checks-state checks-${summary.state}`}>{stateText[summary.state]}</p>}
+      {summary.error && <p className="hint">Could not update the checks: {summary.error}</p>}
+      {list.length > 0 && (
+        <ul>
+          {list.map((c, i) => (
+            <li key={`${i}-${c.name}`} className={`check check-${c.bucket}`}>
+              <span className="check-bucket">{bucketText[c.bucket]}</span>{" "}
+              {c.link ? (
+                <a href={c.link} target="_blank" rel="noopener noreferrer">
+                  {c.name}
+                </a>
+              ) : (
+                c.name
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
     </section>
   );
 }

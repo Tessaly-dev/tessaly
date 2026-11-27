@@ -10,13 +10,24 @@ let daemon: Daemon;
 let fakeBin: string;
 const savedPath = process.env.PATH;
 
-// A stand-in gh on PATH records its arguments and prints a pull request URL,
-// so the test needs no GitHub account.
+// A stand-in gh on PATH records its arguments, prints a pull request URL and
+// reports one passing and one failing check, so the test needs no GitHub
+// account.
 test.beforeAll(async () => {
   fakeBin = mkdtempSync(path.join(tmpdir(), "tess-e2e-gh-"));
   writeFileSync(
     path.join(fakeBin, "gh"),
-    `#!/bin/sh\nprintf '%s\\n' "$@" > "${fakeBin}/args"\ncat > "${fakeBin}/stdin"\necho https://github.com/acme/demo/pull/42\n`,
+    [
+      "#!/bin/sh",
+      'if [ "$2" = checks ]; then',
+      `  echo '[{"name":"Go tests","bucket":"pass","link":"https://github.com/acme/demo/actions/runs/1"},{"name":"E2E","bucket":"fail"}]'`,
+      "  exit 1",
+      "fi",
+      `printf '%s\\n' "$@" > "${fakeBin}/args"`,
+      `cat > "${fakeBin}/stdin"`,
+      "echo https://github.com/acme/demo/pull/42",
+      "",
+    ].join("\n"),
     { mode: 0o700 },
   );
   process.env.PATH = `${fakeBin}${path.delimiter}${savedPath}`;
@@ -71,6 +82,12 @@ test("open a pull request from a workspace", async ({ page }) => {
     "pr\ncreate\n--head=tess/add-readme\n--title=Add readme\n--body-file=-\n",
   );
   expect(readFileSync(path.join(fakeBin, "stdin"), "utf8")).toBe("Adds a README.");
+
+  // The checks show on the workspace and in the home list.
+  const checks = pr.getByRole("region", { name: "Checks" });
+  await expect(checks).toContainText("Some checks failed");
+  await expect(checks.getByRole("listitem")).toHaveText(["Failed E2E", "Passed Go tests"]);
+  await expect(page.getByRole("region", { name: "Ready to review" })).toContainText("Pull request open, checks failing");
 
   // Further changes push to the same pull request.
   await expect(pr.getByRole("button", { name: "Push changes" })).toBeVisible();
