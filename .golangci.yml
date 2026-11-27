@@ -14,6 +14,13 @@ linters:
         - fmt.Fprint
         - fmt.Fprintf
         - fmt.Fprintln
+  exclusions:
+    rules:
+      # Tests make files with loose modes, read temp files and send bare
+      # cookies on purpose, to check that the code rejects them.
+      - path: _test\.go
+        linters: [gosec]
+        text: "G124|G302|G304"
 
 formatters:
   enable:

@@ -1,3 +1,4 @@
 - [Home](Home)
+- [Sign in](Sign-in)
 - [Dev setup](Dev-setup)
 - [Threat model](Threat-model)

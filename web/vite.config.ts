@@ -10,8 +10,12 @@ export default defineConfig({
   },
   server: {
     host: "127.0.0.1",
+    // changeOrigin sends Host: 127.0.0.1:7777, which the daemon's Host check
+    // accepts. The browser still marks requests same-origin, so the CSRF
+    // check passes too.
     proxy: {
-      "/healthz": "http://127.0.0.1:7777",
+      "/healthz": { target: "http://127.0.0.1:7777", changeOrigin: true },
+      "/api": { target: "http://127.0.0.1:7777", changeOrigin: true },
     },
   },
   test: {

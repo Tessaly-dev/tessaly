@@ -12,8 +12,11 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 
+	"github.com/tessaly-dev/tessaly/internal/auth"
+	"github.com/tessaly-dev/tessaly/internal/config"
 	"github.com/tessaly-dev/tessaly/internal/server"
 	"github.com/tessaly-dev/tessaly/internal/version"
 	"github.com/tessaly-dev/tessaly/web"
@@ -78,6 +81,21 @@ func serve(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 
+	home, err := config.Home()
+	if err == nil {
+		err = config.EnsureHome(home)
+	}
+	if err != nil {
+		fmt.Fprintf(stderr, "tess serve: %v\n", err)
+		return 1
+	}
+	tokenPath := filepath.Join(home, "token")
+	token, err := auth.LoadOrCreateToken(tokenPath)
+	if err != nil {
+		fmt.Fprintf(stderr, "tess serve: %v\n", err)
+		return 1
+	}
+
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
 		fmt.Fprintf(stderr, "tess serve: %v\n", err)
@@ -85,9 +103,33 @@ func serve(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	}
 
 	fmt.Fprintf(stdout, "%s listening on http://%s\n", version.String(), addr)
-	if err := server.Serve(ctx, ln, server.Handler(web.Dist(), *port)); err != nil {
+	printSignIn(stdout, addr, token, tokenPath)
+
+	cfg := server.Config{Port: *port, UI: web.Dist(), Auth: auth.New(token)}
+	if err := server.Serve(ctx, ln, server.Handler(cfg)); err != nil {
 		fmt.Fprintf(stderr, "tess serve: %v\n", err)
 		return 1
 	}
 	return 0
+}
+
+// printSignIn tells the user how to sign in. On a terminal it prints a link
+// that carries the token in the URL fragment, which the browser never sends
+// to the server. Anywhere else, such as a service log, it prints only the
+// token file path, so the token does not end up in log files.
+func printSignIn(w io.Writer, addr, token, tokenPath string) {
+	if isTerminal(w) {
+		fmt.Fprintf(w, "Open http://%s/#token=%s to sign in\n", addr, token)
+		return
+	}
+	fmt.Fprintf(w, "Sign in with the token in %s\n", tokenPath)
+}
+
+func isTerminal(w io.Writer) bool {
+	f, ok := w.(*os.File)
+	if !ok {
+		return false
+	}
+	info, err := f.Stat()
+	return err == nil && info.Mode()&os.ModeCharDevice != 0
 }

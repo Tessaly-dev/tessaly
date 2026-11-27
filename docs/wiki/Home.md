@@ -4,6 +4,7 @@ Tessaly runs coding agents side by side on your own machine. It is one Go binary
 
 These pages are published from [`docs/wiki/`](https://github.com/tessaly-dev/tessaly/tree/main/docs/wiki) in the main repo. To change a page, open a pull request there.
 
+- [Sign in](Sign-in): the login token and how sign-in works
 - [Dev setup](Dev-setup): build and test Tessaly locally
 - [Threat model](Threat-model): the security controls in the code today
 
