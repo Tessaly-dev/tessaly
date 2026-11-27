@@ -87,3 +87,16 @@ describe("App", () => {
     expect(await screen.findByLabelText("Token")).toBeTruthy();
   });
 });
+
+describe("App tabs", () => {
+  it("switches between home and repositories", async () => {
+    render(<App repos={noRepos} workspaces={noWorkspaces} load={healthy} auth={fakeAuth(true)} />);
+    const home = await screen.findByRole("tab", { name: "Home" });
+    expect(home.getAttribute("aria-selected")).toBe("true");
+    expect(screen.getByRole("tabpanel", { name: "Home" })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("tab", { name: "Repositories" }));
+    expect(screen.getByRole("tabpanel", { name: "Repositories" })).toBeTruthy();
+    expect(screen.queryByRole("tabpanel", { name: "Home" })).toBeNull();
+  });
+});

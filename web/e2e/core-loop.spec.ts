@@ -24,7 +24,7 @@ function failOnPageErrors(page: Page): string[] {
   return errors;
 }
 
-test("sign in, run an agent in a workspace, and use its terminal", async ({ page }) => {
+test("sign in, run an agent from the home view, and use its terminal", async ({ page }) => {
   const errors = failOnPageErrors(page);
 
   // A wrong token is refused.
@@ -51,25 +51,31 @@ test("sign in, run an agent in a workspace, and use its terminal", async ({ page
   await page.reload();
   await expect(page.getByRole("button", { name: "Sign out" })).toBeVisible();
 
-  // Add the repo.
+  // Add the repo on the Repositories tab.
+  await page.getByRole("tab", { name: "Repositories" }).click();
   await page.getByLabel("Repository folder").fill(daemon.repo);
   await page.getByRole("button", { name: "Add repository" }).click();
   await expect(page.getByRole("listitem").filter({ hasText: daemon.repo })).toContainText("demo-repo");
 
-  // Create a workspace.
+  // Create a workspace from the home view. It opens beside the list.
+  await page.getByRole("tab", { name: "Home" }).click();
   await page.getByLabel("Workspace name").fill("Fix login");
   await expect(page.getByText("Branch: tess/fix-login")).toBeVisible();
   await page.getByRole("button", { name: "Create workspace" }).click();
-  const row = page.getByRole("listitem").filter({ hasText: "fix-login" });
-  await expect(row.locator(".state")).toHaveText("ready");
+  const group = (name: string) => page.getByRole("region", { name });
+  await expect(group("Not started")).toContainText("fix-login");
+  const detail = group("Workspace");
+  await expect(detail.getByRole("heading", { name: "fix-login" })).toBeVisible();
 
   // Start the agent. The prompt reaches it as one argument, shell syntax and all.
-  await row.getByRole("button", { name: "Agent for fix-login" }).click();
-  await page.getByLabel("Prompt").fill("fix the login; rm -rf ~");
-  await page.getByRole("button", { name: "Start agent" }).click();
-  await expect(row.locator(".state")).toHaveText("running");
+  await detail.getByLabel("Prompt").fill("fix the login; rm -rf ~");
+  await detail.getByRole("button", { name: "Start agent" }).click();
+  await expect(group("Running")).toContainText("fix-login");
   const terminal = page.locator(".xterm-rows");
   await expect(terminal).toContainText("task: fix the login; rm -rf ~");
+
+  // The echo agent now waits quietly for input, so it moves to the top group.
+  await expect(group("Needs your input")).toContainText("fix-login", { timeout: 15_000 });
 
   // Keystrokes reach the agent, and its output comes back live.
   await page.locator(".xterm").click();
@@ -77,15 +83,16 @@ test("sign in, run an agent in a workspace, and use its terminal", async ({ page
   await page.keyboard.press("Enter");
   await expect(terminal).toContainText("hello from the browser");
 
-  // Stop the agent. The transcript stays visible.
-  await page.getByRole("button", { name: "Stop agent" }).click();
-  await expect(row.locator(".state")).toHaveText("exited");
-  await expect(row.getByText("Last run exited with code -1.")).toBeVisible();
+  // Stop the agent. It moves to review, and the transcript stays visible.
+  await detail.getByRole("button", { name: "Stop agent" }).click();
+  await expect(group("Ready to review")).toContainText("Stopped by you");
+  await expect(detail.getByText("Last run exited with code -1.")).toBeVisible();
   await expect(terminal).toContainText("task: fix the login");
 
-  // Archive the workspace.
-  await row.getByRole("button", { name: "Archive fix-login" }).click();
-  await expect(row.locator(".state")).toHaveText("archived");
+  // Archive the workspace. It leaves the home list.
+  await detail.getByRole("button", { name: "Archive fix-login" }).click();
+  await expect(page.getByText("Pick a workspace to see its agent.")).toBeVisible();
+  await expect(page.getByRole("button", { name: /fix-login/ })).toHaveCount(0);
 
   // Sign out.
   await page.getByRole("button", { name: "Sign out" }).click();

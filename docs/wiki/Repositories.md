@@ -4,7 +4,7 @@ Tessaly works on git repositories you add. Adding a repo only records its path. 
 
 ## Add a repository
 
-Sign in, type the absolute path of the repo's top folder, and press Add repository. The path must be:
+Sign in, open the Repositories tab, type the absolute path of the repo's top folder, and press Add repository. The path must be:
 
 - absolute, such as `/home/you/code/app`
 - the top folder of a git work tree, not a subfolder and not a bare repo

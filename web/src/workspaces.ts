@@ -13,6 +13,10 @@ export type Workspace = {
   createdAt: string;
   agent?: string;
   exitCode?: number;
+  // How the last run ended: "exited", "stopped" or "interrupted".
+  ended?: string;
+  // True when the agent runs but has been quiet, so it probably waits for input.
+  waiting?: boolean;
 };
 
 export type Agent = { name: string; command: string[] };
