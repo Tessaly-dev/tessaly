@@ -65,6 +65,18 @@ Or check the build provenance with the GitHub CLI:
 gh attestation verify tess_<version>_linux_amd64.tar.gz --repo Tessaly-dev/tessaly
 ```
 
+## Homebrew
+
+Each full release updates the `tess` cask in [Tessaly-dev/homebrew-tap](https://github.com/Tessaly-dev/homebrew-tap), so macOS and Linux users can run:
+
+```sh
+brew install tessaly-dev/tap/tess
+```
+
+The workflow writes to the tap with `HOMEBREW_TAP_TOKEN`, a fine-grained token that can only write the tap's contents, stored in the `release` environment. Without that secret, and for pre-releases, the tap is left alone. The tap points at the release files, so publish the draft soon after the workflow ends, or `brew install` gets a 404 until you do.
+
+The macOS binaries are not notarized by Apple, so the cask clears the quarantine flag after Homebrew has checked the archive's SHA-256.
+
 ## Install script
 
 `scripts/install.sh` installs the latest release, or the one in `TESS_VERSION`, into `~/.local/bin` (or `TESS_INSTALL_DIR`). It never uses sudo.
