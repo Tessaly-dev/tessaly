@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { Passkeys } from "./Passkeys";
+import { Passkeys, ResetNotice } from "./Passkeys";
 import type { PasskeyApi, PasskeyList } from "./passkey";
 
 afterEach(() => {
@@ -28,6 +28,8 @@ function fakeApi(list: PasskeyList): PasskeyApi & { calls: string[] } {
     remove: async (id) => {
       calls.push(`remove:${id}`);
     },
+    resetNotice: async () => null,
+    dismissResetNotice: async () => undefined,
   };
 }
 
@@ -70,5 +72,26 @@ describe("Passkeys", () => {
     render(<Passkeys api={api} />);
     fireEvent.click(await screen.findByRole("button", { name: "Add a passkey" }));
     expect(await screen.findByRole("alert")).toHaveProperty("textContent", "that passkey could not be added");
+  });
+});
+
+describe("ResetNotice", () => {
+  it("warns after a reset until dismissed", async () => {
+    const api = fakeApi({ passkeys: [], fresh: false, origin });
+    api.resetNotice = async () => "2026-11-27T10:00:00Z";
+    api.dismissResetNotice = async () => {
+      api.calls.push("dismiss");
+    };
+    render(<ResetNotice api={api} />);
+    expect((await screen.findByRole("alert")).textContent).toMatch(/Sign-in was reset from the host/);
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
+    await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
+    expect(api.calls).toEqual(["dismiss"]);
+  });
+
+  it("shows nothing without a reset", async () => {
+    const api = fakeApi({ passkeys: [], fresh: false, origin });
+    render(<ResetNotice api={api} />);
+    await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
   });
 });

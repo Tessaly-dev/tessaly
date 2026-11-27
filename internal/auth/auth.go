@@ -131,7 +131,11 @@ type Auth struct {
 	// passkeys is nil until EnablePasskeys.
 	passkeys        *passkeys
 	allowTokenLogin bool
-	ceremonies      map[[sha256.Size]byte]ceremony // ceremony ID hash -> ceremony
+	// resetUntil is set after tess auth reset: the new token works once,
+	// until then. tokenUsed means that token has signed in.
+	resetUntil time.Time
+	tokenUsed  bool
+	ceremonies map[[sha256.Size]byte]ceremony // ceremony ID hash -> ceremony
 }
 
 // session is one sign-in. Only hashes of its secrets are kept.
@@ -184,9 +188,21 @@ func (a *Auth) Login(w http.ResponseWriter, r *http.Request) {
 	}
 	// Compare hashes so the comparison takes the same time for any input length.
 	got := sha256.Sum256([]byte(body.Token))
-	if subtle.ConstantTimeCompare(got[:], a.tokenHash[:]) != 1 {
+	a.mu.Lock()
+	want := a.tokenHash // Reset can change it.
+	a.mu.Unlock()
+	if subtle.ConstantTimeCompare(got[:], want[:]) != 1 {
 		a.countFailure()
 		http.Error(w, "wrong token", http.StatusUnauthorized)
+		return
+	}
+	ok, err := a.takeToken(r.Context(), hasKeys)
+	if err != nil {
+		serverError(w, err)
+		return
+	}
+	if !ok {
+		http.Error(w, "token sign-in closed meanwhile", http.StatusForbidden)
 		return
 	}
 	a.startSession(w, r, 0)
@@ -351,4 +367,48 @@ func (a *Auth) dropExpiredLocked() {
 			delete(a.sessions, k)
 		}
 	}
+}
+
+// ReplaceToken writes a new random token to path with mode 0600, replacing
+// the old file in one rename, and returns it.
+func ReplaceToken(path string) (string, error) {
+	token := newSecret()
+	tmp := path + ".new"
+	_ = os.Remove(tmp)                                                   // A leftover from a crash. Never follow it.
+	f, err := os.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600) // #nosec G304 -- next to the daemon's own token file.
+	if err != nil {
+		return "", fmt.Errorf("write token file: %w", err)
+	}
+	if _, err := f.WriteString(token + "\n"); err != nil {
+		_ = f.Close()
+		_ = os.Remove(tmp)
+		return "", fmt.Errorf("write token file: %w", err)
+	}
+	if err := f.Close(); err != nil {
+		_ = os.Remove(tmp)
+		return "", fmt.Errorf("write token file: %w", err)
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		_ = os.Remove(tmp)
+		return "", fmt.Errorf("write token file: %w", err)
+	}
+	return token, nil
+}
+
+// ResetTokenTTL is how long the token from tess auth reset works.
+const ResetTokenTTL = 15 * time.Minute
+
+// Reset makes token the only way in, once, until until: it ends every
+// session and open passkey prompt, clears the sign-in limit, and returns how
+// many sessions it ended. Call it with the token ReplaceToken wrote.
+func (a *Auth) Reset(token string, until time.Time) int {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	n := len(a.sessions)
+	a.resetUntil, a.tokenUsed = until, false
+	a.tokenHash = sha256.Sum256([]byte(token))
+	a.sessions = make(map[[sha256.Size]byte]session)
+	a.ceremonies = make(map[[sha256.Size]byte]ceremony)
+	a.failed = 0
+	return n
 }

@@ -18,6 +18,9 @@ export type PasskeyApi = {
   add(name: string): Promise<void>;
   verify(): Promise<void>;
   remove(id: number): Promise<void>;
+  // resetNotice gives the time tess auth reset last ran, until dismissed.
+  resetNotice(): Promise<string | null>;
+  dismissResetNotice(): Promise<void>;
 };
 
 // WebAuthn is the part of navigator.credentials the passkey calls use, so
@@ -99,6 +102,17 @@ export function passkeyApi(fetcher: typeof fetch = apiFetch, webauthn?: WebAuthn
     async remove(id: number) {
       const res = await fetcher(`/api/v1/passkeys/${encodeURIComponent(String(id))}`, { method: "DELETE" });
       if (!res.ok) throw await errorFrom(res, "removing the passkey");
+    },
+
+    async resetNotice() {
+      const res = await fetcher("/api/v1/reset-notice", { headers: { Accept: "application/json" } });
+      if (!res.ok) throw await errorFrom(res, "reading the reset notice");
+      return ((await res.json()) as { resetAt: string | null }).resetAt;
+    },
+
+    async dismissResetNotice() {
+      const res = await fetcher("/api/v1/reset-notice", { method: "DELETE" });
+      if (!res.ok) throw await errorFrom(res, "dismissing the reset notice");
     },
   };
 }

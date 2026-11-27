@@ -1,6 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
+import { execFileSync } from "node:child_process";
+import { hostname } from "node:os";
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import { expect, test } from "@playwright/test";
-import { startDaemon, type Daemon } from "./daemon";
+import { binary, startDaemon, type Daemon } from "./daemon";
 
 const port = 47_905;
 let daemon: Daemon;
@@ -70,4 +74,48 @@ test("add a passkey, sign in with it, and remove it", async ({ page, context }) 
   await expect(page.getByLabel("Token")).toBeVisible();
 
   expect(errors).toEqual([]);
+});
+
+test("tess auth reset removes passkeys and ends sessions", async ({ page, context }) => {
+  const cdp = await context.newCDPSession(page);
+  await cdp.send("WebAuthn.enable");
+  await cdp.send("WebAuthn.addVirtualAuthenticator", {
+    options: { protocol: "ctap2", transport: "internal", hasResidentKey: true, hasUserVerification: true, isUserVerified: true },
+  });
+
+  const local = `http://localhost:${port}`;
+  await page.goto(`${local}/#token=${daemon.token}`);
+  await page.getByRole("tab", { name: "Passkeys" }).click();
+  await page.getByRole("button", { name: "Add a passkey" }).click();
+  await expect(page.getByRole("listitem").filter({ hasText: "Passkey" })).toBeVisible();
+
+  // Reset on the host while tess serve runs. It talks to the daemon over
+  // the control socket and writes a new token.
+  // It asks for this machine's host name first.
+  const out = execFileSync(binary, ["auth", "reset"], {
+    env: { ...process.env, TESSALY_HOME: daemon.home },
+    input: `${hostname()}\n`,
+  });
+  expect(out.toString()).toContain("Passkeys removed: 1. Sessions ended: 1.");
+  const token = readFileSync(path.join(daemon.home, "token"), "utf8").trim();
+  expect(token).not.toBe(daemon.token);
+
+  // The old session is gone, and only the new token signs in.
+  await page.reload();
+  await page.getByLabel("Token").fill(daemon.token);
+  await page.getByRole("button", { name: "Sign in" }).click();
+  await expect(page.getByRole("alert")).toHaveText("That token is not right.");
+  await page.getByLabel("Token").fill(token);
+  await page.getByRole("button", { name: "Sign in" }).click();
+  // Whoever signs in next sees that a reset ran, until they dismiss it.
+  await expect(page.getByRole("alert")).toContainText("Sign-in was reset from the host");
+  await page.getByRole("button", { name: "Dismiss" }).click();
+  await expect(page.getByRole("alert")).toHaveCount(0);
+  await page.getByRole("tab", { name: "Passkeys" }).click();
+  await expect(page.getByText("No passkeys yet.")).toBeVisible();
+
+  // The reset token works once, so the form no longer offers it.
+  await page.getByRole("button", { name: "Sign out" }).click();
+  await expect(page.getByText("already used the token from a reset")).toBeVisible();
+  await expect(page.getByLabel("Token")).toHaveCount(0);
 });

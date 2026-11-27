@@ -47,6 +47,7 @@ Platform rules:
 | `cmd/tess` | CLI entry point (binary name `tess`) |
 | `internal/agent` | Adapters that turn a prompt into an agent argv. They never run anything |
 | `internal/auth` | Login token, passkeys (WebAuthn), sign-in sessions and the middleware that guards the API |
+| `internal/control` | The host-only control socket and daemon lock behind `tess auth reset` |
 | `internal/config` | Finds the data folder (`~/.tessaly` or `$TESSALY_HOME`) and loads `config.toml` |
 | `internal/gitx` | Runs git with fixed argv arrays, never a shell |
 | `internal/ptyx` | Runs a program under a pseudo-terminal, keeps its recent output and stops its process group |

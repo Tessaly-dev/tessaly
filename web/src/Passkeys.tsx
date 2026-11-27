@@ -105,3 +105,34 @@ function day(iso: string): string {
 function errorText(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
+
+// ResetNotice warns after tess auth reset ran: every passkey is gone, so
+// whoever signs in next should know, and add a passkey again.
+export function ResetNotice({ api }: { api: PasskeyApi }) {
+  const [at, setAt] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    api
+      .resetNotice()
+      .then((t) => active && setAt(t))
+      .catch(() => undefined);
+    return () => {
+      active = false;
+    };
+  }, [api]);
+
+  if (at === null) return null;
+  return (
+    <div role="alert" className="notice">
+      <p>
+        Sign-in was reset from the host on {new Date(at).toLocaleString()}. Every passkey was removed and everyone was
+        signed out. If you did not run tess auth reset, someone with access to this machine did. Add a passkey again in
+        the Passkeys tab.
+      </p>
+      <button type="button" onClick={() => api.dismissResetNotice().then(() => setAt(null), () => undefined)}>
+        Dismiss
+      </button>
+    </div>
+  );
+}

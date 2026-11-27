@@ -281,3 +281,55 @@ func TestLoginRightTokensAreNotLimited(t *testing.T) {
 		}
 	}
 }
+
+func TestResetEndsSessionsAndSwapsToken(t *testing.T) {
+	old := strings.Repeat("A", tokenLen)
+	a := New(old)
+	login := func(token string) *httptest.ResponseRecorder {
+		r := httptest.NewRequest("POST", "/login", strings.NewReader(`{"token":"`+token+`"}`))
+		rec := httptest.NewRecorder()
+		a.Login(rec, r)
+		return rec
+	}
+	if rec := login(old); rec.Code != http.StatusOK {
+		t.Fatalf("login = %d", rec.Code)
+	}
+	path := filepath.Join(t.TempDir(), "token")
+	if err := os.WriteFile(path, []byte(old+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	token, err := ReplaceToken(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, err := LoadOrCreateToken(path); err != nil || got != token {
+		t.Errorf("token file = %q, %v, want %q", got, err, token)
+	}
+	if n := a.Reset(token, time.Now().Add(ResetTokenTTL)); n != 1 {
+		t.Errorf("Reset ended %d sessions, want 1", n)
+	}
+	if rec := login(old); rec.Code != http.StatusUnauthorized {
+		t.Errorf("old token after reset = %d, want 401", rec.Code)
+	}
+	if rec := login(token); rec.Code != http.StatusOK {
+		t.Errorf("new token after reset = %d, want 200", rec.Code)
+	}
+	if rec := login(token); rec.Code != http.StatusForbidden {
+		t.Errorf("reset token a second time = %d, want 403", rec.Code)
+	}
+}
+
+func TestResetTokenExpires(t *testing.T) {
+	token := strings.Repeat("B", tokenLen)
+	a := New(strings.Repeat("A", tokenLen))
+	now := time.Now()
+	a.now = func() time.Time { return now }
+	a.Reset(token, now.Add(ResetTokenTTL))
+	now = now.Add(ResetTokenTTL)
+	r := httptest.NewRequest("POST", "/login", strings.NewReader(`{"token":"`+token+`"}`))
+	rec := httptest.NewRecorder()
+	a.Login(rec, r)
+	if rec.Code != http.StatusForbidden {
+		t.Errorf("reset token after %s = %d, want 403", ResetTokenTTL, rec.Code)
+	}
+}

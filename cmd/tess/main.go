@@ -20,6 +20,7 @@ import (
 	"github.com/tessaly-dev/tessaly/internal/auth"
 	"github.com/tessaly-dev/tessaly/internal/checks"
 	"github.com/tessaly-dev/tessaly/internal/config"
+	"github.com/tessaly-dev/tessaly/internal/control"
 	"github.com/tessaly-dev/tessaly/internal/forge"
 	"github.com/tessaly-dev/tessaly/internal/server"
 	"github.com/tessaly-dev/tessaly/internal/store"
@@ -31,9 +32,10 @@ import (
 const usage = `Usage: tess <command> [flags]
 
 Commands:
-  serve     Run the Tessaly server on 127.0.0.1
-  version   Print the version
-  help      Show this help
+  serve        Run the Tessaly server on 127.0.0.1
+  auth reset   Remove every passkey, end every session and make a new token
+  version      Print the version
+  help         Show this help
 
 Run "tess serve -h" for serve flags.
 `
@@ -45,6 +47,9 @@ func main() {
 }
 
 // run executes one tess command and returns the process exit code.
+// stdin is where tess reads answers. Tests replace it.
+var stdin io.Reader = os.Stdin
+
 func run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
 		fmt.Fprint(stderr, usage)
@@ -60,6 +65,12 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 		return 0
 	case "serve":
 		return serve(ctx, args[1:], stdout, stderr)
+	case "auth":
+		if len(args) < 2 || args[1] != "reset" {
+			fmt.Fprint(stderr, "Usage: tess auth reset [--yes]\n")
+			return 2
+		}
+		return authReset(ctx, args[2:], stdin, stdout, stderr)
 	default:
 		fmt.Fprintf(stderr, "tess: unknown command %q\n\n%s", args[0], usage)
 		return 2
@@ -103,6 +114,19 @@ func serve(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "tess serve: %v\n", err)
 		return 1
 	}
+	// One daemon per data folder. The lock also tells "tess auth reset"
+	// whether to ask this daemon or change the files itself.
+	unlock, err := control.Lock(home)
+	if errors.Is(err, control.ErrLocked) {
+		fmt.Fprintf(stderr, "tess serve: another tess serve already uses %s\n", home)
+		return 1
+	}
+	if err != nil {
+		fmt.Fprintf(stderr, "tess serve: %v\n", err)
+		return 1
+	}
+	defer unlock()
+
 	tokenPath := filepath.Join(home, "token")
 	token, err := auth.LoadOrCreateToken(tokenPath)
 	if err != nil {
@@ -159,6 +183,15 @@ func serve(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "tess serve: %v\n", err)
 		return 1
 	}
+
+	ctl, err := control.Listen(home)
+	if err != nil {
+		fmt.Fprintf(stderr, "tess serve: %v\n", err)
+		return 1
+	}
+	go control.Serve(ctx, ctl, resetHandler(workspaces.AgentPIDs, func(ctx context.Context) (any, error) {
+		return resetRunning(ctx, signIn, db, tokenPath, local)
+	}))
 
 	github := forge.GitHub{}
 	watcher := checks.New(db, github, checks.DefaultEvery)

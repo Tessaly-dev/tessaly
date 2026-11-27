@@ -27,7 +27,7 @@ export function authApi(fetcher: typeof fetch = apiFetch): AuthApi {
         body: JSON.stringify({ token }),
       });
       if (res.status === 401) throw new Error("That token is not right.");
-      if (res.status === 403) throw new Error("Token sign-in is off because a passkey is registered.");
+      if (res.status === 403) throw new Error("Token sign-in is off. Sign in with a passkey, or run tess auth reset on the host.");
       if (res.status === 429) throw new Error("Too many wrong tokens. Try again in a minute.");
       if (!res.ok) throw new Error(`sign-in failed: ${res.status}`);
       const body = (await res.json()) as { key?: unknown };

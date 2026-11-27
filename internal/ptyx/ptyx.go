@@ -231,6 +231,10 @@ func (p *Process) Resize(rows, cols uint16) error {
 // Done closes when the program has exited and its output is read.
 func (p *Process) Done() <-chan struct{} { return p.done }
 
+// Pid returns the program's process ID. The program leads its own session
+// and process group, so this is also their ID.
+func (p *Process) Pid() int { return p.cmd.Process.Pid }
+
 // ExitCode returns the exit code once Done is closed: -1 if a signal ended
 // the program.
 func (p *Process) ExitCode() int {

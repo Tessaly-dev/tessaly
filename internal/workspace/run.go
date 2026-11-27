@@ -221,6 +221,18 @@ func (m *Manager) Process(id int64) *ptyx.Process {
 	return nil
 }
 
+// AgentPIDs returns the process IDs of every running agent. Each agent leads
+// its own session, so these are also the session IDs of their children.
+func (m *Manager) AgentPIDs() []int {
+	m.runMu.Lock()
+	defer m.runMu.Unlock()
+	pids := make([]int, 0, len(m.runs))
+	for _, r := range m.runs {
+		pids = append(pids, r.proc.Pid())
+	}
+	return pids
+}
+
 // Waiting reports whether workspace id has a running agent that has printed
 // nothing for m.IdleAfter, so it is probably waiting for input.
 func (m *Manager) Waiting(id int64) bool {

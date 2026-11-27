@@ -9,7 +9,7 @@ import { Home } from "./Home";
 import { useWorkspaces } from "./useWorkspaces";
 import { workspacesApi, type WorkspacesApi } from "./workspaces";
 import { SignIn } from "./SignIn";
-import { Passkeys } from "./Passkeys";
+import { Passkeys, ResetNotice } from "./Passkeys";
 import { signedOutEvent } from "./http";
 import { passkeyApi, type LoginOptions, type PasskeyApi } from "./passkey";
 
@@ -146,6 +146,7 @@ function SignedIn({ repos, workspaces, passkeys }: { repos: ReposApi; workspaces
 
   return (
     <>
+      <ResetNotice api={passkeys} />
       <nav role="tablist" aria-label="Views" className="tabs">
         {tabs.map((t) => (
           <button

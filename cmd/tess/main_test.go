@@ -52,7 +52,7 @@ func TestRun(t *testing.T) {
 }
 
 func TestServeStopsOnCancel(t *testing.T) {
-	home := t.TempDir() + "/home"
+	home := testHome(t)
 	t.Setenv("TESSALY_HOME", home)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel() // Serve should start, see the cancelled context and shut down cleanly.
@@ -81,7 +81,7 @@ func TestServeStopsOnCancel(t *testing.T) {
 }
 
 func TestServeListenWarnsOffLoopback(t *testing.T) {
-	t.Setenv("TESSALY_HOME", t.TempDir()+"/home")
+	t.Setenv("TESSALY_HOME", testHome(t))
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
@@ -113,7 +113,7 @@ func TestServeRefusesOpenHome(t *testing.T) {
 }
 
 func TestServeSignInHintFollowsPasskeys(t *testing.T) {
-	home := t.TempDir() + "/home"
+	home := testHome(t)
 	t.Setenv("TESSALY_HOME", home)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -146,4 +146,17 @@ func TestServeSignInHintFollowsPasskeys(t *testing.T) {
 	if !strings.Contains(stdout.String(), "Sign in with the token in") {
 		t.Errorf("with --allow-token-login, stdout = %q, want the token hint", stdout.String())
 	}
+}
+
+// testHome returns a data folder path that does not exist yet. It sits
+// under /tmp, because the control socket path must stay short and the
+// macOS test folder is long.
+func testHome(t *testing.T) string {
+	t.Helper()
+	dir, err := os.MkdirTemp("/tmp", "tess")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(dir) })
+	return filepath.Join(dir, "home")
 }
