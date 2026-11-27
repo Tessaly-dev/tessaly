@@ -26,6 +26,7 @@ import (
 	"io/fs"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -44,6 +45,13 @@ const (
 	Protocol = "tessaly"
 	// SessionTTL is how long a session lasts after sign-in.
 	SessionTTL = 7 * 24 * time.Hour
+
+	// MaxFailedLogins is how many wrong tokens Login accepts per
+	// FailedLoginWindow. Past that it replies 429 to every sign-in, right
+	// token or not, until the window ends.
+	MaxFailedLogins = 10
+	// FailedLoginWindow is the window for MaxFailedLogins.
+	FailedLoginWindow = time.Minute
 
 	tokenBytes   = 32
 	maxLoginBody = 4 << 10
@@ -113,6 +121,9 @@ type Auth struct {
 
 	mu       sync.Mutex
 	sessions map[[sha256.Size]byte]session // cookie hash -> session
+	// failed counts wrong tokens since failedSince.
+	failed      int
+	failedSince time.Time
 }
 
 // session is one sign-in. Only hashes of its secrets are kept.
@@ -134,6 +145,11 @@ func New(token string) *Auth {
 // and replies 200 with {"key": "..."}, the session key. It replies 401 on a
 // wrong token.
 func (a *Auth) Login(w http.ResponseWriter, r *http.Request) {
+	if wait := a.loginWait(); wait > 0 {
+		w.Header().Set("Retry-After", strconv.Itoa(int(wait.Round(time.Second)/time.Second)))
+		http.Error(w, "too many wrong tokens, try again later", http.StatusTooManyRequests)
+		return
+	}
 	var body struct {
 		Token string `json:"token"`
 	}
@@ -145,6 +161,9 @@ func (a *Auth) Login(w http.ResponseWriter, r *http.Request) {
 	// Compare hashes so the comparison takes the same time for any input length.
 	got := sha256.Sum256([]byte(body.Token))
 	if subtle.ConstantTimeCompare(got[:], a.tokenHash[:]) != 1 {
+		a.mu.Lock()
+		a.failed++
+		a.mu.Unlock()
 		http.Error(w, "wrong token", http.StatusUnauthorized)
 		return
 	}
@@ -164,6 +183,21 @@ func (a *Auth) Login(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(struct {
 		Key string `json:"key"`
 	}{key})
+}
+
+// loginWait returns how long sign-in stays closed after too many wrong
+// tokens, or 0 when it is open.
+func (a *Auth) loginWait() time.Duration {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	now := a.now()
+	if now.Sub(a.failedSince) >= FailedLoginWindow {
+		a.failed, a.failedSince = 0, now
+	}
+	if a.failed < MaxFailedLogins {
+		return 0
+	}
+	return FailedLoginWindow - now.Sub(a.failedSince)
 }
 
 // Logout handles POST. It ends the caller's session and clears the cookie.

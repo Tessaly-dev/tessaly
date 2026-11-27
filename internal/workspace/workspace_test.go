@@ -275,7 +275,7 @@ func startAgent(t *testing.T, m *Manager, repo store.Repo, slug string, argv ...
 	if err != nil {
 		t.Fatal(err)
 	}
-	ws, err = m.Start(context.Background(), ws, "test", argv)
+	ws, err = m.Start(context.Background(), ws, "test", argv, "")
 	if err != nil {
 		t.Fatalf("Start: %v", err)
 	}
@@ -335,7 +335,7 @@ func TestStartRunsAgentInWorktree(t *testing.T) {
 	}
 
 	// An exited workspace can run again, and then be archived.
-	if _, err := m.Start(context.Background(), ws, "test", []string{"true"}); err != nil {
+	if _, err := m.Start(context.Background(), ws, "test", []string{"true"}, ""); err != nil {
 		t.Fatalf("restart: %v", err)
 	}
 	ws = waitExited(t, m, ws.ID)
@@ -349,7 +349,7 @@ func TestStartRefusesWhileRunning(t *testing.T) {
 	ws := startAgent(t, m, repo, "busy", "sleep", "60")
 	defer m.StopAll(context.Background())
 
-	if _, err := m.Start(context.Background(), ws, "test", []string{"true"}); !errors.Is(err, ErrConflict) {
+	if _, err := m.Start(context.Background(), ws, "test", []string{"true"}, ""); !errors.Is(err, ErrConflict) {
 		t.Errorf("second start: err = %v, want ErrConflict", err)
 	}
 	if _, err := m.Archive(context.Background(), repo, ws); !errors.Is(err, ErrConflict) {
@@ -363,7 +363,7 @@ func TestStartMissingProgramKeepsState(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := m.Start(context.Background(), ws, "test", []string{"/no/such/agent"}); err == nil {
+	if _, err := m.Start(context.Background(), ws, "test", []string{"/no/such/agent"}, ""); err == nil {
 		t.Fatal("Start of a missing program succeeded")
 	}
 	got, _ := m.store.Workspace(context.Background(), ws.ID)
@@ -402,5 +402,117 @@ func TestAgentEnv(t *testing.T) {
 	want := []string{"HOME=/h", "ANTHROPIC_API_KEY=k", "TERM=xterm-256color", "TESSALY_WORKSPACE=fix", "TESSALY_BRANCH=tess/fix"}
 	if strings.Join(got, ",") != strings.Join(want, ",") {
 		t.Errorf("agentEnv = %v, want %v", got, want)
+	}
+}
+
+func TestStartCapsRunningAgents(t *testing.T) {
+	m, repo := setup(t)
+	m.maxRuns = 1
+	startAgent(t, m, repo, "first", "sleep", "60")
+	defer m.StopAll(context.Background())
+
+	ws, err := m.Create(context.Background(), repo, "second")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := m.Start(context.Background(), ws, "test", []string{"true"}, ""); !errors.Is(err, ErrTooManyRunning) {
+		t.Fatalf("start over the cap: err = %v, want ErrTooManyRunning", err)
+	}
+	if got, _ := m.store.Workspace(context.Background(), ws.ID); got.State != string(Ready) {
+		t.Errorf("state = %s, want ready", got.State)
+	}
+}
+
+func TestTranscriptStopsAtLimitAndRotates(t *testing.T) {
+	m, repo := setup(t)
+	m.maxTranscript = 200
+	ws := startAgent(t, m, repo, "chatty", "sh", "-c", "i=0; while [ $i -lt 50 ]; do echo line-$i; i=$((i+1)); done")
+	ws = waitExited(t, m, ws.ID)
+
+	path := m.TranscriptPath(ws.ID)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := string(data)
+	if !strings.Contains(out, "transcript full") || !strings.Contains(out, "exited with code 0") {
+		t.Errorf("transcript lacks the full note or the exit line:\n%s", out)
+	}
+	if strings.Contains(out, "line-49") || !strings.Contains(out, "line-0") {
+		t.Error("transcript should keep early output and drop output past its limit")
+	}
+	if limit := 200 + len(fullNote) + 64; len(data) > limit {
+		t.Errorf("transcript is %d bytes, want at most %d", len(data), limit)
+	}
+
+	// The next run moves the full transcript aside and starts a new one.
+	if _, err := m.Start(context.Background(), ws, "test", []string{"echo", "second run"}, ""); err != nil {
+		t.Fatal(err)
+	}
+	waitExited(t, m, ws.ID)
+	old, err := os.ReadFile(path + ".1")
+	if err != nil || string(old) != out {
+		t.Errorf("rotated transcript = %q, %v, want the first run", old, err)
+	}
+	if fresh, _ := os.ReadFile(path); !strings.Contains(string(fresh), "second run") || strings.Contains(string(fresh), "line-0") {
+		t.Errorf("new transcript = %q", fresh)
+	}
+	if info, err := os.Stat(path + ".1"); err != nil || info.Mode().Perm() != 0o600 {
+		t.Errorf("rotated transcript mode = %v, %v, want 0600", info, err)
+	}
+}
+
+func TestStartWritesPromptFileAndRemovesIt(t *testing.T) {
+	m, repo := setup(t)
+	ws, err := m.Create(context.Background(), repo, "secret")
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := m.PromptPath(ws.ID)
+	ws, err = m.Start(context.Background(), ws, "test", []string{"sh", "-c", `ls -l "$1"; cat "$1"`, "x", path}, "the secret task")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ws = waitExited(t, m, ws.ID)
+	out, err := os.ReadFile(m.TranscriptPath(ws.ID))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(out), "-rw-------") || !strings.Contains(string(out), "the secret task") {
+		t.Errorf("agent did not read a 0600 prompt file:\n%s", out)
+	}
+	if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("prompt file still there after exit: %v", err)
+	}
+	if info, err := os.Stat(filepath.Dir(path)); err != nil || info.Mode().Perm() != 0o700 {
+		t.Errorf("prompts folder = %v, %v, want mode 0700", info, err)
+	}
+
+	// A start that fails leaves no prompt file behind.
+	if _, err := m.Start(context.Background(), ws, "test", []string{"/no/such/agent", path}, "the secret task"); err == nil {
+		t.Fatal("start of a missing program succeeded")
+	}
+	if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("prompt file left after a failed start: %v", err)
+	}
+}
+
+func TestStartLeavesARunningAgentsPromptAlone(t *testing.T) {
+	m, repo := setup(t)
+	ws, err := m.Create(context.Background(), repo, "busy")
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := m.PromptPath(ws.ID)
+	ws, err = m.Start(context.Background(), ws, "test", []string{"sh", "-c", "sleep 60", "x", path}, "first")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer m.StopAll(context.Background())
+	if _, err := m.Start(context.Background(), ws, "test", []string{"true", path}, "second"); !errors.Is(err, ErrConflict) {
+		t.Fatalf("second start: err = %v, want ErrConflict", err)
+	}
+	if got, err := os.ReadFile(path); err != nil || string(got) != "first" {
+		t.Errorf("prompt file = %q, %v, want the running agent's", got, err)
 	}
 }

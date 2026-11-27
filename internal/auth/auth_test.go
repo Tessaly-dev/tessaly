@@ -241,3 +241,43 @@ func TestSessionExpires(t *testing.T) {
 		t.Errorf("expired session still stored")
 	}
 }
+
+func TestLoginLimitsWrongTokens(t *testing.T) {
+	token := strings.Repeat("A", tokenLen)
+	a := New(token)
+	now := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	a.now = func() time.Time { return now }
+	wrong := `{"token":"` + strings.Repeat("B", tokenLen) + `"}`
+	right := `{"token":"` + token + `"}`
+
+	for i := range MaxFailedLogins {
+		if rec := login(t, a, wrong); rec.Code != http.StatusUnauthorized {
+			t.Fatalf("wrong token %d = %d, want 401", i, rec.Code)
+		}
+	}
+	// Sign-in is closed now, even for the right token.
+	now = now.Add(10 * time.Second)
+	rec := login(t, a, right)
+	if rec.Code != http.StatusTooManyRequests {
+		t.Fatalf("login over the limit = %d, want 429", rec.Code)
+	}
+	if got := rec.Header().Get("Retry-After"); got != "50" {
+		t.Errorf("Retry-After = %q, want 50", got)
+	}
+
+	// It opens again once the window ends.
+	now = now.Add(FailedLoginWindow)
+	if rec := login(t, a, right); rec.Code != http.StatusOK {
+		t.Fatalf("login after the window = %d, want 200", rec.Code)
+	}
+}
+
+func TestLoginRightTokensAreNotLimited(t *testing.T) {
+	token := strings.Repeat("A", tokenLen)
+	a := New(token)
+	for i := range MaxFailedLogins * 2 {
+		if rec := login(t, a, `{"token":"`+token+`"}`); rec.Code != http.StatusOK {
+			t.Fatalf("login %d = %d, want 200", i, rec.Code)
+		}
+	}
+}

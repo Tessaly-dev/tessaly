@@ -53,16 +53,18 @@ func (h agentHandlers) start(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "no such agent. Add it to config.toml")
 		return
 	}
-	argv, err := agent.Generic{Argv: cfg.Command}.Command(body.Prompt)
+	argv, err := agent.Generic{Argv: cfg.Command}.Command(body.Prompt, h.ws.manager.PromptPath(ws.ID))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
-	ws, err = h.ws.manager.Start(r.Context(), ws, body.Agent, argv)
+	ws, err = h.ws.manager.Start(r.Context(), ws, body.Agent, argv, body.Prompt)
 	switch {
 	case errors.Is(err, workspace.ErrConflict):
 		writeError(w, http.StatusConflict, "an agent can start only in a ready or exited workspace")
+	case errors.Is(err, workspace.ErrTooManyRunning):
+		writeError(w, http.StatusTooManyRequests, err.Error())
 	case err != nil:
 		// A missing program is the usual cause, and the message names only
 		// the program from the user's own config.

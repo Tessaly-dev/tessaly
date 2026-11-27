@@ -57,6 +57,7 @@ func testConfig(t *testing.T, port int, ui fstest.MapFS) Config {
 		Agents: map[string]config.Agent{
 			"echo":  {Command: []string{"printf", "said: %s\\n", "{prompt}"}},
 			"sleep": {Command: []string{"sleep", "60"}},
+			"file":  {Command: []string{"cat", "{prompt_file}"}},
 		},
 	}
 }

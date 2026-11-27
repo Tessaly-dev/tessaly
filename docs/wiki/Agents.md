@@ -8,7 +8,7 @@ Add agents to `~/.tessaly/config.toml`, then restart `tess serve`:
 
 ```toml
 [agents.aider]
-command = ["aider", "--message", "{prompt}"]
+command = ["aider", "--message-file", "{prompt_file}"]
 
 [agents.claude]
 command = ["claude", "{prompt}"]
@@ -19,6 +19,7 @@ command = ["bash"]
 
 - `command` is an argv array. Tessaly never runs it through a shell, so `|`, `&&` and `$VAR` have no special meaning.
 - An element that is exactly `{prompt}` is replaced by the task prompt, as one argument. `{prompt}` inside a longer element is left alone.
+- An element that is exactly `{prompt_file}` is replaced by the path of a file that holds the prompt. Use it when the CLI can read its task from a file. Arguments show in `ps` to every user on the machine, and a file does not. Tessaly writes the file to `~/.tessaly/prompts/workspace-<id>.txt` with mode 0600 just before the agent starts, and deletes it when the agent exits.
 - Agent names use lower-case letters, digits and dashes, up to 32 characters.
 - Tessaly refuses to start if other users can write the file (`chmod go-w ~/.tessaly/config.toml`).
 
@@ -29,6 +30,10 @@ Open a workspace's Agent panel, pick an agent, type a prompt and press Start age
 - starts in the worktree, under a terminal 120 columns wide
 - gets your environment minus `TESSALY_*` and `GIT_*` variables, plus `TERM=xterm-256color`, `TESSALY_WORKSPACE` and `TESSALY_BRANCH`
 - writes its output to `~/.tessaly/logs/workspace-<id>.log` (mode 0600). Tessaly keeps the last 1 MiB in memory
+
+A transcript stops growing at 64 MiB and ends with a note that later output is not saved. The live terminal keeps working. The next run in that workspace moves the full transcript to `workspace-<id>.log.1`, replacing any older one, and starts a new file.
+
+Up to 16 agents run at once. Stop one to start another.
 
 The panel shows the agent's terminal live. Click into it to type: keystrokes go to the agent as if you typed in a local terminal. Resizing the window resizes the agent's terminal. After the agent exits, the panel shows the end of the transcript.
 
@@ -43,7 +48,7 @@ All routes need a signed-in session.
 | Method and path | Body | Reply |
 | --- | --- | --- |
 | `GET /api/v1/agents` | none | `200` with `[{name, command}]` |
-| `POST /api/v1/workspaces/{id}/start` | `{"agent": "aider", "prompt": "..."}` | `200` with the workspace. `400` for an unknown agent, a bad prompt or a missing program. `409` unless the workspace is ready or exited |
+| `POST /api/v1/workspaces/{id}/start` | `{"agent": "aider", "prompt": "..."}` | `200` with the workspace. `400` for an unknown agent, a bad prompt or a missing program. `409` unless the workspace is ready or exited. `429` when 16 agents run already |
 | `POST /api/v1/workspaces/{id}/stop` | none | `200` once the agent has exited. `409` if none runs |
 | `GET /api/v1/workspaces/{id}/output` | none | `200` with the last 1 MiB of output as `text/plain` |
 | `GET /api/v1/workspaces/{id}/terminal` | WebSocket | See below |

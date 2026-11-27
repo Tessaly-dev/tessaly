@@ -15,6 +15,8 @@ To move the data folder, set `TESSALY_HOME` to an absolute path. The folder also
 
 A sign-in has two parts. The browser keeps a cookie, and the page keeps a session key in its local storage. Browsers send cookies for `127.0.0.1` to every port on it, so another local server you open could get the cookie. Local storage belongs to one origin, port included, so that server never sees the key, and the cookie alone does not work.
 
+After 10 wrong tokens in a minute, sign-in closes for the rest of that minute, even for the right token, and replies `429` with a `Retry-After` header.
+
 A sign-in lasts 7 days. Restarting `tess serve` signs everyone out. Use the Sign out button to end a session early. It also deletes the key from the browser.
 
 ### Calling the API yourself
