@@ -91,6 +91,7 @@ TypeScript:
 | --- | --- | --- |
 | Go unit | `make test-go` | Any logic: parsing, validation, routing, state changes |
 | UI unit | `make test-ui` | Components with logic, hooks, API client |
+| End to end | `make e2e` | Every UI feature: add a step to an existing flow in `web/e2e/` or a new spec |
 
 Rules:
 
@@ -99,6 +100,18 @@ Rules:
 - No `time.Sleep` in tests. Wait on channels or poll with a deadline.
 - Use `t.TempDir()` for any files. Never write outside it.
 - Test the failure case, not only the happy path.
+- A PR that adds or changes something in the UI adds or updates an end-to-end test, so the feature is checked in a real browser against the real binary.
+
+### End-to-end tests
+
+The specs in `web/e2e/` use Playwright and Chromium. Each spec file starts `bin/tess` with a fresh `TESSALY_HOME` in a temp folder, a `config.toml` with test agents, and a git repo with one commit (see `web/e2e/daemon.ts`). The tests then drive the UI like a person would. They fail on any console error, so a CSP violation or a script error breaks the build.
+
+```sh
+cd web && pnpm exec playwright install chromium   # once
+make e2e                                          # builds bin/tess, then runs the specs
+```
+
+Test agents are plain commands such as `sh` and `cat`, so the tests need no real agent CLI and no network. Give each spec file its own port. CI runs the specs on Linux in the Build job.
 
 ## Security checklist for every PR
 

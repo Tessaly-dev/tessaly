@@ -4,7 +4,7 @@ VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 LDFLAGS := -s -w -X github.com/tessaly-dev/tessaly/internal/version.Version=$(VERSION)
 BIN     := bin/tess
 
-.PHONY: setup ui build dev test test-go test-ui lint check clean
+.PHONY: setup ui build dev test test-go test-ui e2e lint check clean
 
 setup: ## Install UI dependencies from the lockfile
 	cd web && pnpm install --frozen-lockfile
@@ -25,6 +25,9 @@ test-go:
 
 test-ui:
 	cd web && pnpm test
+
+e2e: build ## Run the browser end-to-end tests against bin/tess
+	cd web && pnpm run e2e
 
 lint: ## Run Go and UI linters and type checks
 	golangci-lint run ./...

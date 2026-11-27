@@ -8,6 +8,7 @@ cd tessaly
 make setup   # UI dependencies from the lockfile
 make test    # Go and UI unit tests
 make check   # lint, type checks, tests and a build, as CI runs them
+make e2e     # browser tests against bin/tess (run "pnpm exec playwright install chromium" in web/ once)
 make dev     # build and run on http://127.0.0.1:7777
 ```
 
