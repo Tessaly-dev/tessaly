@@ -38,6 +38,6 @@ All routes need a signed-in session.
 
 | Method and path | Body | Reply |
 | --- | --- | --- |
-| `GET /api/v1/workspaces` | none | `200` with the list, newest first |
+| `GET /api/v1/workspaces` | none | `200` with the list, newest first. Each running workspace also has `waiting`, see [Agents](Agents#waiting-for-you) |
 | `POST /api/v1/workspaces` | `{"repoId": 1, "name": "fix-login"}` | `201` with the workspace. `400` for a bad name or unknown repo, `409` if the branch or name exists |
 | `POST /api/v1/workspaces/{id}/archive` | none | `200` with the workspace. `409` if it has changes, an agent runs, or it is already archived |

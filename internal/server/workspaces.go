@@ -17,13 +17,26 @@ type workspaceHandlers struct {
 	manager *workspace.Manager
 }
 
+// workspaceView is a workspace as the list shows it, with live state that
+// is not stored.
+type workspaceView struct {
+	store.Workspace
+	// Waiting is true when the agent runs but has been quiet for a while,
+	// so it probably waits for input.
+	Waiting bool `json:"waiting,omitempty"`
+}
+
 func (h workspaceHandlers) list(w http.ResponseWriter, r *http.Request) {
 	list, err := h.store.Workspaces(r.Context())
 	if err != nil {
 		serverError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, list)
+	views := make([]workspaceView, len(list))
+	for i, ws := range list {
+		views[i] = workspaceView{Workspace: ws, Waiting: h.manager.Waiting(ws.ID)}
+	}
+	writeJSON(w, http.StatusOK, views)
 }
 
 func (h workspaceHandlers) create(w http.ResponseWriter, r *http.Request) {

@@ -26,9 +26,12 @@ type Workspace struct {
 	// ExitCode is how the last agent run ended. It is nil while one runs or
 	// before the first run.
 	ExitCode *int `json:"exitCode,omitempty"`
+	// Ended says how the last agent run ended: "exited", "stopped" or
+	// "interrupted". It is empty while one runs or before the first run.
+	Ended string `json:"ended,omitempty"`
 }
 
-const workspaceCols = "id, repo_id, slug, branch, base, path, state, error, created_at, agent, exit_code"
+const workspaceCols = "id, repo_id, slug, branch, base, path, state, error, created_at, agent, exit_code, ended"
 
 // AddWorkspace stores w and sets its ID and CreatedAt. It returns ErrExists
 // if the repo already has a workspace with that slug, or the path is taken.
@@ -61,10 +64,10 @@ func (s *Store) SetWorkspaceState(ctx context.Context, id int64, state, errText 
 	return nil
 }
 
-// SetWorkspaceRun stores the agent and exit code of the latest run. A nil
-// exitCode means the run is still going.
-func (s *Store) SetWorkspaceRun(ctx context.Context, id int64, agent string, exitCode *int) error {
-	res, err := s.db.ExecContext(ctx, "UPDATE workspaces SET agent = ?, exit_code = ? WHERE id = ?", agent, exitCode, id)
+// SetWorkspaceRun stores the agent, exit code and end of the latest run. A
+// nil exitCode and an empty ended mean the run is still going.
+func (s *Store) SetWorkspaceRun(ctx context.Context, id int64, agent string, exitCode *int, ended string) error {
+	res, err := s.db.ExecContext(ctx, "UPDATE workspaces SET agent = ?, exit_code = ?, ended = ? WHERE id = ?", agent, exitCode, ended, id)
 	if err != nil {
 		return fmt.Errorf("set workspace run: %w", err)
 	}
@@ -109,7 +112,7 @@ func scanWorkspace(sc scanner) (Workspace, error) {
 	var w Workspace
 	var created string
 	var exit sql.NullInt64
-	if err := sc.Scan(&w.ID, &w.RepoID, &w.Slug, &w.Branch, &w.Base, &w.Path, &w.State, &w.Error, &created, &w.Agent, &exit); err != nil {
+	if err := sc.Scan(&w.ID, &w.RepoID, &w.Slug, &w.Branch, &w.Base, &w.Path, &w.State, &w.Error, &created, &w.Agent, &exit, &w.Ended); err != nil {
 		return Workspace{}, err
 	}
 	if exit.Valid {

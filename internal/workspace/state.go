@@ -49,3 +49,13 @@ func checkMove(from, to State) error {
 	}
 	return nil
 }
+
+// How an agent run ended, stored as the workspace's Ended field.
+const (
+	// EndExited: the agent exited on its own.
+	EndExited = "exited"
+	// EndStopped: the user stopped the agent.
+	EndStopped = "stopped"
+	// EndInterrupted: tess stopped, or crashed, while the agent ran.
+	EndInterrupted = "interrupted"
+)
