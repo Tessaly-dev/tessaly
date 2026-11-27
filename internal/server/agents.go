@@ -63,6 +63,8 @@ func (h agentHandlers) start(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case errors.Is(err, workspace.ErrConflict):
 		writeError(w, http.StatusConflict, "an agent can start only in a ready or exited workspace")
+	case errors.Is(err, workspace.ErrTooManyRunning):
+		writeError(w, http.StatusTooManyRequests, err.Error())
 	case err != nil:
 		// A missing program is the usual cause, and the message names only
 		// the program from the user's own config.

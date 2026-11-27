@@ -404,3 +404,60 @@ func TestAgentEnv(t *testing.T) {
 		t.Errorf("agentEnv = %v, want %v", got, want)
 	}
 }
+
+func TestStartCapsRunningAgents(t *testing.T) {
+	m, repo := setup(t)
+	m.maxRuns = 1
+	startAgent(t, m, repo, "first", "sleep", "60")
+	defer m.StopAll(context.Background())
+
+	ws, err := m.Create(context.Background(), repo, "second")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := m.Start(context.Background(), ws, "test", []string{"true"}); !errors.Is(err, ErrTooManyRunning) {
+		t.Fatalf("start over the cap: err = %v, want ErrTooManyRunning", err)
+	}
+	if got, _ := m.store.Workspace(context.Background(), ws.ID); got.State != string(Ready) {
+		t.Errorf("state = %s, want ready", got.State)
+	}
+}
+
+func TestTranscriptStopsAtLimitAndRotates(t *testing.T) {
+	m, repo := setup(t)
+	m.maxTranscript = 200
+	ws := startAgent(t, m, repo, "chatty", "sh", "-c", "i=0; while [ $i -lt 50 ]; do echo line-$i; i=$((i+1)); done")
+	ws = waitExited(t, m, ws.ID)
+
+	path := m.TranscriptPath(ws.ID)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := string(data)
+	if !strings.Contains(out, "transcript full") || !strings.Contains(out, "exited with code 0") {
+		t.Errorf("transcript lacks the full note or the exit line:\n%s", out)
+	}
+	if strings.Contains(out, "line-49") || !strings.Contains(out, "line-0") {
+		t.Error("transcript should keep early output and drop output past its limit")
+	}
+	if limit := 200 + len(fullNote) + 64; len(data) > limit {
+		t.Errorf("transcript is %d bytes, want at most %d", len(data), limit)
+	}
+
+	// The next run moves the full transcript aside and starts a new one.
+	if _, err := m.Start(context.Background(), ws, "test", []string{"echo", "second run"}); err != nil {
+		t.Fatal(err)
+	}
+	waitExited(t, m, ws.ID)
+	old, err := os.ReadFile(path + ".1")
+	if err != nil || string(old) != out {
+		t.Errorf("rotated transcript = %q, %v, want the first run", old, err)
+	}
+	if fresh, _ := os.ReadFile(path); !strings.Contains(string(fresh), "second run") || strings.Contains(string(fresh), "line-0") {
+		t.Errorf("new transcript = %q", fresh)
+	}
+	if info, err := os.Stat(path + ".1"); err != nil || info.Mode().Perm() != 0o600 {
+		t.Errorf("rotated transcript mode = %v, %v, want 0600", info, err)
+	}
+}

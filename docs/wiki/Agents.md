@@ -30,6 +30,10 @@ Open a workspace's Agent panel, pick an agent, type a prompt and press Start age
 - gets your environment minus `TESSALY_*` and `GIT_*` variables, plus `TERM=xterm-256color`, `TESSALY_WORKSPACE` and `TESSALY_BRANCH`
 - writes its output to `~/.tessaly/logs/workspace-<id>.log` (mode 0600). Tessaly keeps the last 1 MiB in memory
 
+A transcript stops growing at 64 MiB and ends with a note that later output is not saved. The live terminal keeps working. The next run in that workspace moves the full transcript to `workspace-<id>.log.1`, replacing any older one, and starts a new file.
+
+Up to 16 agents run at once. Stop one to start another.
+
 The panel shows the agent's terminal live. Click into it to type: keystrokes go to the agent as if you typed in a local terminal. Resizing the window resizes the agent's terminal. After the agent exits, the panel shows the end of the transcript.
 
 Press Stop agent to end it. Tessaly sends SIGTERM to the agent and every process it started, and SIGKILL after 10 seconds. When the agent exits, the workspace shows `exited` and the exit code. You can start an agent again in an exited workspace.
@@ -43,7 +47,7 @@ All routes need a signed-in session.
 | Method and path | Body | Reply |
 | --- | --- | --- |
 | `GET /api/v1/agents` | none | `200` with `[{name, command}]` |
-| `POST /api/v1/workspaces/{id}/start` | `{"agent": "aider", "prompt": "..."}` | `200` with the workspace. `400` for an unknown agent, a bad prompt or a missing program. `409` unless the workspace is ready or exited |
+| `POST /api/v1/workspaces/{id}/start` | `{"agent": "aider", "prompt": "..."}` | `200` with the workspace. `400` for an unknown agent, a bad prompt or a missing program. `409` unless the workspace is ready or exited. `429` when 16 agents run already |
 | `POST /api/v1/workspaces/{id}/stop` | none | `200` once the agent has exited. `409` if none runs |
 | `GET /api/v1/workspaces/{id}/output` | none | `200` with the last 1 MiB of output as `text/plain` |
 | `GET /api/v1/workspaces/{id}/terminal` | WebSocket | See below |

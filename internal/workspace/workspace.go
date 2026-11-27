@@ -46,6 +46,10 @@ type Manager struct {
 	// agent exit, so they cannot race.
 	runMu sync.Mutex
 	runs  map[int64]*run
+	// maxRuns caps how many agents run at once.
+	maxRuns int
+	// maxTranscript caps the size of one transcript file.
+	maxTranscript int64
 }
 
 // NewManager returns a Manager that keeps worktrees and transcripts in the
@@ -56,6 +60,9 @@ func NewManager(s *store.Store, home string) *Manager {
 		home:  home,
 		root:  filepath.Join(home, "worktrees"),
 		runs:  make(map[int64]*run),
+
+		maxRuns:       MaxRunning,
+		maxTranscript: MaxTranscript,
 	}
 }
 
