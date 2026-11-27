@@ -3,6 +3,7 @@
 - [Your work](Your-work)
 - [Repositories](Repositories)
 - [Workspaces](Workspaces)
+- [Pull requests](Pull-requests)
 - [Agents](Agents)
 - [Dev setup](Dev-setup)
 - [Threat model](Threat-model)

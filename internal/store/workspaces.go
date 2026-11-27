@@ -29,9 +29,11 @@ type Workspace struct {
 	// Ended says how the last agent run ended: "exited", "stopped" or
 	// "interrupted". It is empty while one runs or before the first run.
 	Ended string `json:"ended,omitempty"`
+	// PRURL is the pull request opened from the branch, if any.
+	PRURL string `json:"prUrl,omitempty"`
 }
 
-const workspaceCols = "id, repo_id, slug, branch, base, path, state, error, created_at, agent, exit_code, ended"
+const workspaceCols = "id, repo_id, slug, branch, base, path, state, error, created_at, agent, exit_code, ended, pr_url"
 
 // AddWorkspace stores w and sets its ID and CreatedAt. It returns ErrExists
 // if the repo already has a workspace with that slug, or the path is taken.
@@ -79,6 +81,20 @@ func (s *Store) SetWorkspaceRun(ctx context.Context, id int64, agent string, exi
 	return nil
 }
 
+// SetWorkspacePR stores the URL of the pull request opened from workspace id.
+func (s *Store) SetWorkspacePR(ctx context.Context, id int64, url string) error {
+	res, err := s.db.ExecContext(ctx, "UPDATE workspaces SET pr_url = ? WHERE id = ?", url, id)
+	if err != nil {
+		return fmt.Errorf("set workspace pull request: %w", err)
+	}
+	if n, err := res.RowsAffected(); err != nil {
+		return err
+	} else if n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 // Workspace returns the workspace with id, or ErrNotFound.
 func (s *Store) Workspace(ctx context.Context, id int64) (Workspace, error) {
 	row := s.db.QueryRowContext(ctx, "SELECT "+workspaceCols+" FROM workspaces WHERE id = ?", id)
@@ -112,7 +128,7 @@ func scanWorkspace(sc scanner) (Workspace, error) {
 	var w Workspace
 	var created string
 	var exit sql.NullInt64
-	if err := sc.Scan(&w.ID, &w.RepoID, &w.Slug, &w.Branch, &w.Base, &w.Path, &w.State, &w.Error, &created, &w.Agent, &exit, &w.Ended); err != nil {
+	if err := sc.Scan(&w.ID, &w.RepoID, &w.Slug, &w.Branch, &w.Base, &w.Path, &w.State, &w.Error, &created, &w.Agent, &exit, &w.Ended, &w.PRURL); err != nil {
 		return Workspace{}, err
 	}
 	if exit.Valid {

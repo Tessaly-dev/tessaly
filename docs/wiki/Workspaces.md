@@ -32,6 +32,8 @@ Open a workspace on the Home tab and press Review changes. Tessaly shows everyth
 
 The diff loads only when you ask, and stops at 1 MiB or 500 new files. The panel says so when it is cut. Tessaly runs `git diff` with `--no-ext-diff` and `--no-textconv`, so diff programs set in the repo's config never run.
 
+To send the changes for review, open a pull request. See [Pull requests](Pull-requests).
+
 ## Archive a workspace
 
 Press Archive. Tessaly runs `git worktree remove` without `--force`. If the worktree has uncommitted or untracked files, it refuses, so you do not lose work. Commit or delete those files first. The branch is kept.

@@ -148,3 +148,26 @@ func TestReposEmptyIsNotNil(t *testing.T) {
 		t.Error("Repos() = nil, want empty slice so the API returns []")
 	}
 }
+
+func TestSetWorkspacePR(t *testing.T) {
+	ctx := context.Background()
+	s, _ := openTest(t)
+	repo, err := s.AddRepo(ctx, "app", "/src/app")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ws := Workspace{RepoID: repo.ID, Slug: "fix", Branch: "tess/fix", Base: "abc", Path: "/w/fix", State: "ready"}
+	if err := s.AddWorkspace(ctx, &ws); err != nil {
+		t.Fatal(err)
+	}
+	url := "https://github.com/acme/app/pull/7"
+	if err := s.SetWorkspacePR(ctx, ws.ID, url); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := s.Workspace(ctx, ws.ID); err != nil || got.PRURL != url {
+		t.Errorf("PRURL = %q, %v; want %q", got.PRURL, err, url)
+	}
+	if err := s.SetWorkspacePR(ctx, 999, url); !errors.Is(err, ErrNotFound) {
+		t.Errorf("missing workspace: err = %v, want ErrNotFound", err)
+	}
+}

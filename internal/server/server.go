@@ -20,6 +20,7 @@ import (
 
 	"github.com/tessaly-dev/tessaly/internal/auth"
 	"github.com/tessaly-dev/tessaly/internal/config"
+	"github.com/tessaly-dev/tessaly/internal/forge"
 	"github.com/tessaly-dev/tessaly/internal/store"
 	"github.com/tessaly-dev/tessaly/internal/version"
 	"github.com/tessaly-dev/tessaly/internal/workspace"
@@ -54,6 +55,8 @@ type Config struct {
 	Workspaces *workspace.Manager
 	// Agents are the agent CLIs from config.toml, by name.
 	Agents map[string]config.Agent
+	// Forge opens pull requests.
+	Forge forge.Forge
 }
 
 // Handler returns the HTTP handler for cfg.
@@ -72,11 +75,12 @@ func Handler(cfg Config) http.Handler {
 	api.HandleFunc("GET /api/v1/repos", repos.list)
 	api.HandleFunc("POST /api/v1/repos", repos.add)
 	api.HandleFunc("DELETE /api/v1/repos/{id}", repos.remove)
-	ws := workspaceHandlers{store: cfg.Store, manager: cfg.Workspaces}
+	ws := workspaceHandlers{store: cfg.Store, manager: cfg.Workspaces, forge: cfg.Forge}
 	api.HandleFunc("GET /api/v1/workspaces", ws.list)
 	api.HandleFunc("POST /api/v1/workspaces", ws.create)
 	api.HandleFunc("POST /api/v1/workspaces/{id}/archive", ws.archive)
 	api.HandleFunc("GET /api/v1/workspaces/{id}/diff", ws.diff)
+	api.HandleFunc("POST /api/v1/workspaces/{id}/ship", ws.ship)
 	agents := agentHandlers{agents: cfg.Agents, ws: ws}
 	api.HandleFunc("GET /api/v1/agents", agents.list)
 	api.HandleFunc("POST /api/v1/workspaces/{id}/start", agents.start)
