@@ -12,9 +12,11 @@ on:
       - go.sum
       - .golangci.yml
       - Makefile
+      - .goreleaser.yaml
       - "web/**"
       - "!web/**/*.md"
       - .github/workflows/ci.yml
+      - .github/workflows/release.yml
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
     paths:
@@ -23,9 +25,11 @@ on:
       - go.sum
       - .golangci.yml
       - Makefile
+      - .goreleaser.yaml
       - "web/**"
       - "!web/**/*.md"
       - .github/workflows/ci.yml
+      - .github/workflows/release.yml
 
 # Least privilege: every job only reads the repo. Jobs that need more must ask
 # for it themselves.
@@ -39,6 +43,7 @@ concurrency:
 env:
   GOLANGCI_LINT_VERSION: v2.15.0
   GOVULNCHECK_VERSION: v1.10.0
+  GORELEASER_VERSION: v2.20.3
 
 jobs:
   lint:
@@ -140,12 +145,10 @@ jobs:
         run: |
           go build -trimpath -o bin/tess ./cmd/tess
           cd web && pnpm run e2e
-      # One job cross-compiles every target, so the UI builds once.
-      - name: Build tess for linux and darwin
-        env:
-          CGO_ENABLED: "0"
-        run: |
-          for target in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64; do
-            GOOS="${target%/*}" GOARCH="${target#*/}" \
-              go build -trimpath -ldflags "-s -w" -o "bin/tess-${target%/*}-${target#*/}" ./cmd/tess
-          done
+      # A snapshot runs the release config end to end for every target,
+      # without signing or publishing, so a broken config fails here first.
+      - uses: goreleaser/goreleaser-action@a4f02ab5355a589de60d917a659ce617ed19b3de # v7.3.0
+        with:
+          distribution: goreleaser
+          version: ${{ env.GORELEASER_VERSION }}
+          args: release --snapshot --clean --skip=sign,sbom

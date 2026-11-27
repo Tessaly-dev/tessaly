@@ -1,0 +1,71 @@
+# SPDX-License-Identifier: Apache-2.0
+# GoReleaser builds the release binaries. The release workflow runs it when a
+# version tag is pushed. Try it locally with "make snapshot".
+version: 2
+
+project_name: tess
+
+before:
+  hooks:
+    # The UI is embedded into the binary, so it must be built first.
+    - make ui
+    # Stop if the UI build left no index.html, so no release ships without a UI.
+    - sh -c 'test -f web/dist/index.html'
+
+builds:
+  - id: tess
+    main: ./cmd/tess
+    binary: tess
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w -X github.com/tessaly-dev/tessaly/internal/version.Version=v{{ .Version }}
+    # Use the commit time, so the same commit always builds the same binary.
+    mod_timestamp: "{{ .CommitTimestamp }}"
+    goos: [linux, darwin]
+    goarch: [amd64, arm64]
+
+archives:
+  - formats: [tar.gz]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - LICENSE
+      - README.md
+
+checksum:
+  name_template: checksums.txt
+  algorithm: sha256
+
+# One SPDX SBOM per archive, made by syft.
+sboms:
+  - artifacts: archive
+
+# Keyless cosign signature of the checksums file. It covers every archive,
+# because each archive's SHA-256 is in the file.
+signs:
+  - cmd: cosign
+    artifacts: checksum
+    signature: "${artifact}.sigstore.json"
+    args:
+      - sign-blob
+      - --bundle=${signature}
+      - ${artifact}
+      - --yes
+
+changelog:
+  use: github
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+      - "^ci:"
+
+release:
+  # Tags such as v0.1.0-rc.1 publish as a pre-release.
+  prerelease: auto
+  # The workflow publishes a draft. A maintainer checks it and publishes it.
+  draft: true

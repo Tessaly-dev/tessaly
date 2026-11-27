@@ -10,6 +10,7 @@ make test    # Go and UI unit tests
 make check   # lint, type checks, tests and a build, as CI runs them
 make e2e     # browser tests against bin/tess (run "pnpm exec playwright install chromium" in web/ once)
 make dev     # build and run on http://127.0.0.1:7777
+make snapshot  # release archives in dist/, needs GoReleaser (see Releasing)
 ```
 
 For UI work, keep `make dev` running and start `pnpm dev` in `web/`. Vite serves the UI on `127.0.0.1:5173` and forwards `/healthz` and `/api`, including the terminal WebSocket, to the daemon. Sign in with the token from `~/.tessaly/token`. To keep dev data apart from your real data, run the daemon with `TESSALY_HOME=/tmp/tessaly-dev`.

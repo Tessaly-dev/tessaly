@@ -6,4 +6,5 @@
 - [Pull requests](Pull-requests)
 - [Agents](Agents)
 - [Dev setup](Dev-setup)
+- [Releasing](Releasing)
 - [Threat model](Threat-model)

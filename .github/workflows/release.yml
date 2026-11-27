@@ -1,0 +1,77 @@
+# SPDX-License-Identifier: Apache-2.0
+name: Release
+
+# Pushing a version tag such as v0.1.0 builds, signs and uploads a draft
+# release. Nothing else starts this workflow. See docs/wiki/Releasing.md.
+on:
+  push:
+    tags: ["v*"]
+
+# Nothing by default. The release job asks for what it needs.
+permissions: {}
+
+# Never run two releases at once, and never cancel one halfway.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+env:
+  GORELEASER_VERSION: v2.20.3
+
+jobs:
+  release:
+    name: Build and sign
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    # Add required reviewers to this environment in the repo settings to make
+    # every release wait for a maintainer's approval.
+    environment: release
+    permissions:
+      contents: write     # create the draft release and upload files
+      id-token: write     # keyless cosign signing and attestations
+      attestations: write # store build provenance attestations
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # GoReleaser reads the tags and history for the changelog.
+          fetch-depth: 0
+          persist-credentials: false
+
+      # Only release commits that are already on main, so a tag on an
+      # unreviewed branch cannot ship.
+      - name: Check the tag is on main
+        run: |
+          git fetch --no-tags origin main
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/main
+
+      # No dependency caches here. A poisoned cache from another workflow
+      # must not reach a release build.
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+        with:
+          go-version-file: go.mod
+          check-latest: true
+          cache: false
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+        with:
+          package_json_file: web/package.json
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+      - name: Install UI dependencies
+        working-directory: web
+        run: pnpm install --frozen-lockfile
+
+      - uses: sigstore/cosign-installer@881c63bd87e38389154debd8331404ce7ca8a3ab # v4.1.4
+      - uses: anchore/sbom-action/download-syft@dfcb83b97731532d72be422cbc51ee64adb6fd56 # v0.24.4
+
+      - uses: goreleaser/goreleaser-action@a4f02ab5355a589de60d917a659ce617ed19b3de # v7.3.0
+        with:
+          distribution: goreleaser
+          version: ${{ env.GORELEASER_VERSION }}
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-checksums: dist/checksums.txt
