@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
-// Package server runs the Tessaly HTTP server. In this skeleton it serves a
-// health endpoint and the embedded UI, and only ever listens on 127.0.0.1.
+// Package server runs the Tessaly HTTP server. It serves a health endpoint,
+// the embedded UI and the API under /api/v1/, and only ever listens on 127.0.0.1.
 package server
 
 import (
@@ -17,6 +17,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/tessaly-dev/tessaly/internal/auth"
 	"github.com/tessaly-dev/tessaly/internal/version"
 )
 
@@ -35,13 +36,36 @@ func Addr(port int) (string, error) {
 	return net.JoinHostPort(loopback, strconv.Itoa(port)), nil
 }
 
-// Handler returns the HTTP handler for a server listening on port.
-// ui holds the built web UI. It may be empty when the UI has not been built.
-func Handler(ui fs.FS, port int) http.Handler {
+// Config holds what the HTTP handler needs.
+type Config struct {
+	// Port is the port the server listens on. The Host check uses it.
+	Port int
+	// UI holds the built web UI. It may be empty when the UI has not been built.
+	UI fs.FS
+	// Auth checks sign-in for the API.
+	Auth *auth.Auth
+}
+
+// Handler returns the HTTP handler for cfg.
+func Handler(cfg Config) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", health)
-	mux.Handle("/", uiHandler(ui))
-	return securityHeaders(hostCheck(port, mux))
+	mux.Handle("/", uiHandler(cfg.UI))
+
+	// Sign-in and sign-out are the only API routes open without a session.
+	mux.HandleFunc("POST /api/v1/login", cfg.Auth.Login)
+	mux.HandleFunc("POST /api/v1/logout", cfg.Auth.Logout)
+
+	api := http.NewServeMux()
+	api.HandleFunc("GET /api/v1/session", session)
+	// Every other API path needs a session too, so unknown paths answer 401
+	// to callers who are not signed in, and 404 to those who are.
+	mux.Handle("/api/", cfg.Auth.Require(api))
+
+	// CrossOriginProtection rejects state-changing requests that a browser
+	// sends from another site, which stops CSRF against the local API.
+	csrf := http.NewCrossOriginProtection()
+	return securityHeaders(hostCheck(cfg.Port, csrf.Handler(mux)))
 }
 
 // Serve serves h on ln until ctx ends, then shuts down within 5 seconds.
@@ -78,6 +102,14 @@ func Serve(ctx context.Context, ln net.Listener, h http.Handler) error {
 type healthResponse struct {
 	Status  string `json:"status"`
 	Version string `json:"version"`
+}
+
+// session replies 200 to a signed-in caller. The UI uses it to decide whether
+// to show the sign-in form.
+func session(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+	_, _ = w.Write([]byte(`{"signedIn":true}` + "\n"))
 }
 
 func health(w http.ResponseWriter, r *http.Request) {

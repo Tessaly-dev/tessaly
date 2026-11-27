@@ -10,10 +10,12 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strconv"
+	"strings"
 	"testing"
 	"testing/fstest"
 	"time"
 
+	"github.com/tessaly-dev/tessaly/internal/auth"
 	"github.com/tessaly-dev/tessaly/internal/version"
 )
 
@@ -25,6 +27,13 @@ var testUI = fstest.MapFS{
 	".gitkeep":       {Data: []byte("")},
 	"assets/.secret": {Data: []byte("x")},
 	".hidden/app.js": {Data: []byte("x")},
+}
+
+// testToken is a well-formed token: 43 base64url characters.
+const testToken = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+
+func testHandler(ui fstest.MapFS) http.Handler {
+	return Handler(Config{Port: testPort, UI: ui, Auth: auth.New(testToken)})
 }
 
 func do(t *testing.T, h http.Handler, method, target, host string) *httptest.ResponseRecorder {
@@ -61,7 +70,7 @@ func TestAddr(t *testing.T) {
 }
 
 func TestHealth(t *testing.T) {
-	h := Handler(testUI, testPort)
+	h := testHandler(testUI)
 
 	rec := do(t, h, http.MethodGet, "/healthz", "127.0.0.1:7777")
 	if rec.Code != http.StatusOK {
@@ -80,7 +89,7 @@ func TestHealth(t *testing.T) {
 }
 
 func TestHealthRejectsOtherMethods(t *testing.T) {
-	h := Handler(testUI, testPort)
+	h := testHandler(testUI)
 	for _, m := range []string{http.MethodPost, http.MethodPut, http.MethodDelete} {
 		rec := do(t, h, m, "/healthz", "127.0.0.1:7777")
 		if rec.Code != http.StatusMethodNotAllowed {
@@ -90,7 +99,7 @@ func TestHealthRejectsOtherMethods(t *testing.T) {
 }
 
 func TestHostCheck(t *testing.T) {
-	h := Handler(testUI, testPort)
+	h := testHandler(testUI)
 	tests := []struct {
 		host string
 		want int
@@ -113,7 +122,7 @@ func TestHostCheck(t *testing.T) {
 }
 
 func TestSecurityHeaders(t *testing.T) {
-	h := Handler(testUI, testPort)
+	h := testHandler(testUI)
 	// Headers must be set on rejected requests too.
 	for _, host := range []string{"127.0.0.1:7777", "evil.example"} {
 		rec := do(t, h, http.MethodGet, "/", host)
@@ -131,7 +140,7 @@ func TestSecurityHeaders(t *testing.T) {
 }
 
 func TestUI(t *testing.T) {
-	h := Handler(testUI, testPort)
+	h := testHandler(testUI)
 	tests := []struct {
 		method string
 		path   string
@@ -176,7 +185,7 @@ func TestUIPathTraversal(t *testing.T) {
 }
 
 func TestUINotBuilt(t *testing.T) {
-	h := Handler(fstest.MapFS{".gitkeep": {}}, testPort)
+	h := testHandler(fstest.MapFS{".gitkeep": {}})
 	rec := do(t, h, http.MethodGet, "/", "127.0.0.1:7777")
 	if rec.Code != http.StatusServiceUnavailable {
 		t.Errorf("status = %d, want 503", rec.Code)
@@ -192,7 +201,7 @@ func TestServe(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
-	go func() { done <- Serve(ctx, ln, Handler(testUI, port)) }()
+	go func() { done <- Serve(ctx, ln, Handler(Config{Port: port, UI: testUI, Auth: auth.New(testToken)})) }()
 
 	resp, err := http.Get("http://127.0.0.1:" + strconv.Itoa(port) + "/healthz")
 	if err != nil {
@@ -212,5 +221,103 @@ func TestServe(t *testing.T) {
 		}
 	case <-time.After(10 * time.Second):
 		t.Fatal("Serve did not stop after cancel")
+	}
+}
+
+// send makes a request with an optional JSON body, cookie and extra headers.
+func send(t *testing.T, h http.Handler, method, target, body string, cookie *http.Cookie, headers map[string]string) *httptest.ResponseRecorder {
+	t.Helper()
+	req := httptest.NewRequest(method, target, strings.NewReader(body))
+	req.Host = "127.0.0.1:7777"
+	if body != "" {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	if cookie != nil {
+		req.AddCookie(cookie)
+	}
+	for k, v := range headers {
+		req.Header.Set(k, v)
+	}
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	return rec
+}
+
+func sessionCookie(t *testing.T, rec *httptest.ResponseRecorder) *http.Cookie {
+	t.Helper()
+	for _, c := range rec.Result().Cookies() {
+		if c.Name == auth.CookieName {
+			return c
+		}
+	}
+	t.Fatalf("no %s cookie in response", auth.CookieName)
+	return nil
+}
+
+func TestAPINeedsSignIn(t *testing.T) {
+	h := testHandler(testUI)
+	for _, p := range []string{"/api/v1/session", "/api/v1/unknown", "/api/"} {
+		if rec := send(t, h, http.MethodGet, p, "", nil, nil); rec.Code != http.StatusUnauthorized {
+			t.Errorf("GET %s without session = %d, want 401", p, rec.Code)
+		}
+	}
+	bogus := &http.Cookie{Name: auth.CookieName, Value: testToken}
+	if rec := send(t, h, http.MethodGet, "/api/v1/session", "", bogus, nil); rec.Code != http.StatusUnauthorized {
+		t.Errorf("GET /api/v1/session with unknown cookie = %d, want 401", rec.Code)
+	}
+}
+
+func TestAPILoginFlow(t *testing.T) {
+	h := testHandler(testUI)
+
+	if rec := send(t, h, http.MethodPost, "/api/v1/login", `{"token":"wrong"}`, nil, nil); rec.Code != http.StatusUnauthorized {
+		t.Fatalf("login with wrong token = %d, want 401", rec.Code)
+	}
+
+	rec := send(t, h, http.MethodPost, "/api/v1/login", `{"token":"`+testToken+`"}`, nil, nil)
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("login = %d, want 204", rec.Code)
+	}
+	cookie := sessionCookie(t, rec)
+	if !cookie.HttpOnly || cookie.SameSite != http.SameSiteStrictMode {
+		t.Errorf("cookie HttpOnly=%v SameSite=%v, want HttpOnly and Strict", cookie.HttpOnly, cookie.SameSite)
+	}
+
+	if rec := send(t, h, http.MethodGet, "/api/v1/session", "", cookie, nil); rec.Code != http.StatusOK {
+		t.Errorf("session after login = %d, want 200", rec.Code)
+	}
+	if rec := send(t, h, http.MethodGet, "/api/v1/unknown", "", cookie, nil); rec.Code != http.StatusNotFound {
+		t.Errorf("unknown route after login = %d, want 404", rec.Code)
+	}
+
+	if rec := send(t, h, http.MethodPost, "/api/v1/logout", "", cookie, nil); rec.Code != http.StatusNoContent {
+		t.Fatalf("logout = %d, want 204", rec.Code)
+	}
+	if rec := send(t, h, http.MethodGet, "/api/v1/session", "", cookie, nil); rec.Code != http.StatusUnauthorized {
+		t.Errorf("session after logout = %d, want 401", rec.Code)
+	}
+}
+
+func TestAPIRejectsCrossSiteRequests(t *testing.T) {
+	h := testHandler(testUI)
+	body := `{"token":"` + testToken + `"}`
+	tests := []struct {
+		name    string
+		headers map[string]string
+		want    int
+	}{
+		{"same origin", map[string]string{"Sec-Fetch-Site": "same-origin"}, http.StatusNoContent},
+		{"cross site fetch", map[string]string{"Sec-Fetch-Site": "cross-site"}, http.StatusForbidden},
+		{"same site, other port", map[string]string{"Sec-Fetch-Site": "same-site"}, http.StatusForbidden},
+		{"foreign Origin", map[string]string{"Origin": "http://evil.example"}, http.StatusForbidden},
+		{"matching Origin", map[string]string{"Origin": "http://127.0.0.1:7777"}, http.StatusNoContent},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rec := send(t, h, http.MethodPost, "/api/v1/login", body, nil, tt.headers)
+			if rec.Code != tt.want {
+				t.Errorf("status = %d, want %d", rec.Code, tt.want)
+			}
+		})
 	}
 }

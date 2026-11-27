@@ -5,6 +5,8 @@ package main
 import (
 	"bytes"
 	"context"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -46,6 +48,8 @@ func TestRun(t *testing.T) {
 }
 
 func TestServeStopsOnCancel(t *testing.T) {
+	home := t.TempDir() + "/home"
+	t.Setenv("TESSALY_HOME", home)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel() // Serve should start, see the cancelled context and shut down cleanly.
 
@@ -57,5 +61,31 @@ func TestServeStopsOnCancel(t *testing.T) {
 	}
 	if !strings.Contains(stdout.String(), "listening on http://127.0.0.1:47777") {
 		t.Errorf("stdout = %q, want listen line", stdout.String())
+	}
+
+	// stdout is not a terminal, so the token must not be printed.
+	token, err := os.ReadFile(filepath.Join(home, "token"))
+	if err != nil {
+		t.Fatalf("token file not created: %v", err)
+	}
+	if strings.Contains(stdout.String(), strings.TrimSpace(string(token))) {
+		t.Error("stdout contains the token")
+	}
+	if !strings.Contains(stdout.String(), "Sign in with the token in "+filepath.Join(home, "token")) {
+		t.Errorf("stdout = %q, want token path hint", stdout.String())
+	}
+}
+
+func TestServeRefusesOpenHome(t *testing.T) {
+	home := t.TempDir()
+	if err := os.Chmod(home, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("TESSALY_HOME", home)
+
+	var stdout, stderr bytes.Buffer
+	code := run(context.Background(), []string{"serve", "--port", "47778"}, &stdout, &stderr)
+	if code != 1 || !strings.Contains(stderr.String(), "other users can reach it") {
+		t.Errorf("code = %d, stderr = %q, want 1 and a mode error", code, stderr.String())
 	}
 }

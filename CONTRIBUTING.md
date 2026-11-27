@@ -30,7 +30,7 @@ make check      # lint, vet, type checks, tests and a build
 make dev        # builds the UI and runs the daemon on 127.0.0.1:7777
 ```
 
-For UI work, run `make dev` in one terminal and `pnpm dev` in `web/` in another. Vite serves the UI on `127.0.0.1:5173` and forwards `/healthz` to the daemon.
+For UI work, run `make dev` in one terminal and `pnpm dev` in `web/` in another. Vite serves the UI on `127.0.0.1:5173` and forwards `/healthz` and `/api` to the daemon.
 
 macOS and Linux are supported, on amd64 and arm64 (including Raspberry Pi). CI runs the Go tests on Linux amd64, Linux arm64 and macOS, so you only need one of them locally. On Windows, clone and build inside WSL2, not on the Windows file system.
 
@@ -45,6 +45,8 @@ Platform rules:
 | Path | What lives there |
 | --- | --- |
 | `cmd/tess` | CLI entry point (binary name `tess`) |
+| `internal/auth` | Login token, sign-in sessions and the middleware that guards the API |
+| `internal/config` | Finds and creates the data folder (`~/.tessaly` or `$TESSALY_HOME`) |
 | `internal/server` | HTTP server, routes and security middleware |
 | `internal/version` | Build version, set with `-ldflags` |
 | `web/` | React UI, embedded into the binary with `go:embed` from `web/dist` |
@@ -98,7 +100,8 @@ Rules:
 - [ ] No `sh -c` or other shell string execution. Commands use argv arrays.
 - [ ] User input (paths, flags, request data) is validated before use.
 - [ ] File paths are resolved and checked against their allowed root.
-- [ ] New HTTP routes go through the existing middleware (Host check and security headers) and reject methods they do not handle.
+- [ ] New HTTP routes go through the existing middleware (Host check, cross-origin check and security headers) and reject methods they do not handle.
+- [ ] New API routes sit behind sign-in (`auth.Require`). Only sign-in and sign-out are open.
 - [ ] The server still binds to `127.0.0.1` only.
 - [ ] No secrets or tokens written to logs.
 - [ ] New files and directories use 0600 and 0700 permissions.

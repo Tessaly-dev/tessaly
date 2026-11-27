@@ -17,7 +17,7 @@
 Tessaly runs coding agents side by side on your own machine. It is one Go binary with a browser UI, and it runs on your computer or your own server.
 
 > [!NOTE]
-> Tessaly is in early development. Today the binary prints its version and serves a health check and a placeholder UI. This README and the docs grow as features land.
+> Tessaly is in early development. Today the binary serves a health check, token sign-in and a placeholder UI. This README and the docs grow as features land.
 
 ## Platforms
 
@@ -41,6 +41,8 @@ bin/tess version
 bin/tess serve   # http://127.0.0.1:7777
 ```
 
+On first start, `tess serve` makes a random login token in `~/.tessaly/token` (mode 0600). In a terminal it prints a sign-in link that carries the token. Otherwise, paste the token into the sign-in form. Set `TESSALY_HOME` to keep the data folder somewhere else.
+
 Check the daemon:
 
 ```sh
@@ -48,7 +50,7 @@ curl http://127.0.0.1:7777/healthz
 # {"status":"ok","version":"..."}
 ```
 
-`tess serve` only ever listens on `127.0.0.1`. To reach it from another device, use an SSH tunnel, a VPN or an HTTPS reverse proxy. The skeleton has no login yet, so do not expose it to a network.
+`tess serve` only ever listens on `127.0.0.1`. To reach it from another device, use an SSH tunnel, a VPN or an HTTPS reverse proxy. Keep the token secret: anyone who has it can use Tessaly as you.
 
 ## Security
 

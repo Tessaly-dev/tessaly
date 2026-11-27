@@ -30,3 +30,39 @@ main {
 h1 {
   color: var(--accent);
 }
+
+form {
+  display: grid;
+  gap: 0.75rem;
+  margin-top: 2rem;
+}
+
+label {
+  display: grid;
+  gap: 0.25rem;
+}
+
+input,
+button {
+  font: inherit;
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.375rem;
+  border: 1px solid currentColor;
+}
+
+button {
+  justify-self: start;
+  background: var(--accent);
+  color: var(--bg);
+  border-color: var(--accent);
+  cursor: pointer;
+}
+
+button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+[role="alert"] {
+  color: var(--accent);
+}
