@@ -504,7 +504,7 @@ func TestStartLeavesARunningAgentsPromptAlone(t *testing.T) {
 		t.Fatal(err)
 	}
 	path := m.PromptPath(ws.ID)
-	ws, err = m.Start(context.Background(), ws, "test", []string{"sleep", "60", path}, "first")
+	ws, err = m.Start(context.Background(), ws, "test", []string{"sh", "-c", "sleep 60", "x", path}, "first")
 	if err != nil {
 		t.Fatal(err)
 	}
