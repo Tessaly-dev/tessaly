@@ -162,3 +162,19 @@ func TestStopEndsProgramAndChildren(t *testing.T) {
 	// Stop after exit returns at once.
 	p.Stop(context.Background(), time.Hour)
 }
+
+func TestShortProgramKeepsAllOutput(t *testing.T) {
+	// A program that prints and exits at once must not lose its output.
+	// macOS dropped it when the program's side of the terminal closed
+	// before Tessaly had read it.
+	for i := range 20 {
+		p, err := Start([]string{"echo", "quick exit"}, t.TempDir(), nil, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		wait(t, p.Done())
+		if got := string(p.Output()); !strings.Contains(got, "quick exit") {
+			t.Fatalf("run %d: output = %q", i, got)
+		}
+	}
+}

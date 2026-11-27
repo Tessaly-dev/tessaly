@@ -25,10 +25,18 @@ const BufferSize = 1 << 20
 // in case a child it left behind still holds the terminal open.
 const drainTimeout = 2 * time.Second
 
+// quietPeriod is how long the terminal must stay silent after the program
+// exits before Tessaly closes it.
+const quietPeriod = 100 * time.Millisecond
+
 // Process is a program running under a pseudo-terminal.
 type Process struct {
-	cmd        *exec.Cmd
-	tty        *os.File
+	cmd *exec.Cmd
+	tty *os.File // the controlling side, which Tessaly reads and writes
+	// slave is the program's side. Tessaly holds it open until the output
+	// is read, because macOS drops unread output when the last holder of
+	// the program's side closes it.
+	slave      *os.File
 	transcript io.Writer
 	done       chan struct{}
 
@@ -48,14 +56,25 @@ func Start(argv []string, dir string, env []string, transcript io.Writer) (*Proc
 	cmd := exec.Command(argv[0], argv[1:]...) // #nosec G204 -- argv comes from the user's own config, and no shell is involved.
 	cmd.Dir = dir
 	cmd.Env = env
-	tty, err := pty.StartWithSize(cmd, &pty.Winsize{Rows: 30, Cols: 120})
+	tty, slave, err := pty.Open()
 	if err != nil {
+		return nil, fmt.Errorf("open terminal: %w", err)
+	}
+	if err := pty.Setsize(tty, &pty.Winsize{Rows: 30, Cols: 120}); err != nil {
+		_, _ = tty.Close(), slave.Close()
+		return nil, fmt.Errorf("size terminal: %w", err)
+	}
+	cmd.Stdin, cmd.Stdout, cmd.Stderr = slave, slave, slave
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true, Setctty: true}
+	if err := cmd.Start(); err != nil {
+		_, _ = tty.Close(), slave.Close()
 		return nil, fmt.Errorf("start %s: %w", argv[0], err)
 	}
 
 	p := &Process{
 		cmd:        cmd,
 		tty:        tty,
+		slave:      slave,
 		transcript: transcript,
 		done:       make(chan struct{}),
 		out:        newRing(BufferSize),
@@ -68,6 +87,7 @@ func Start(argv []string, dir string, env []string, transcript io.Writer) (*Proc
 // run copies output until the program exits, then records the exit code.
 func (p *Process) run() {
 	copied := make(chan struct{})
+	read := make(chan struct{}, 1)
 	go func() {
 		defer close(copied)
 		buf := make([]byte, 32<<10)
@@ -75,6 +95,10 @@ func (p *Process) run() {
 			n, err := p.tty.Read(buf)
 			if n > 0 {
 				p.publish(buf[:n])
+				select {
+				case read <- struct{}{}:
+				default:
+				}
 			}
 			if err != nil {
 				return // EOF, or EIO on Linux once the program has exited.
@@ -83,9 +107,11 @@ func (p *Process) run() {
 	}()
 
 	err := p.cmd.Wait()
+	p.drain(read, copied)
+	_ = p.slave.Close()
 	select {
 	case <-copied:
-	case <-time.After(drainTimeout):
+	case <-time.After(quietPeriod):
 	}
 	_ = p.tty.Close()
 	<-copied
@@ -107,6 +133,28 @@ func (p *Process) run() {
 	}
 	p.mu.Unlock()
 	close(p.done)
+}
+
+// drain waits, after the program exits, until its output goes quiet for
+// quietPeriod, or for drainTimeout at most if a child it left behind keeps
+// writing.
+func (p *Process) drain(read, copied <-chan struct{}) {
+	quiet := time.NewTimer(quietPeriod)
+	defer quiet.Stop()
+	limit := time.NewTimer(drainTimeout)
+	defer limit.Stop()
+	for {
+		select {
+		case <-read:
+			quiet.Reset(quietPeriod)
+		case <-quiet.C:
+			return
+		case <-limit.C:
+			return
+		case <-copied:
+			return
+		}
+	}
 }
 
 func (p *Process) publish(b []byte) {
