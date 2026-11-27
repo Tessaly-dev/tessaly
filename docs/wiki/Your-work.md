@@ -1,0 +1,25 @@
+# Your work
+
+The Home tab lists every workspace by what it needs from you. The most urgent work sits at the top:
+
+| Group | What is in it |
+| --- | --- |
+| Needs your input | Agents that run but have been quiet for 5 seconds, so they probably wait for an answer. Also runs that `tess serve` cut off when it stopped |
+| Ready to review | Agents that exited with code 0, and agents you stopped |
+| Failed | Agents that exited with another code, and workspaces whose setup failed |
+| Running | Agents that are working and printing output |
+| Not started | Workspaces where no agent has run yet |
+
+Archived workspaces do not show. Empty groups are hidden. The list reloads every 2 seconds, so a workspace moves between groups on its own.
+
+"Needs your input" is a guess. Tessaly cannot read what the agent prints, so an agent that thinks for 5 seconds without printing also lands there. See [Agents](Agents#waiting-for-you).
+
+## Open a workspace
+
+Click a workspace to open it beside the list. You see its repo, branch and state, and its agent panel: start or stop the agent, and type into its live terminal. On a phone the panel shows below the list.
+
+Press New workspace under the list to create one. See [Workspaces](Workspaces).
+
+## Repositories
+
+Add and remove repositories on the Repositories tab. See [Repositories](Repositories).

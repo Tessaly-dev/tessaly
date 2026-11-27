@@ -4,7 +4,7 @@ A workspace is one task in one repository. It has its own git branch and its own
 
 ## Create a workspace
 
-Pick a repository, type a name, and press Create workspace. Tessaly then:
+On the Home tab, press New workspace (the form shows on its own when you have none), pick a repository, type a name, and press Create workspace. Tessaly then:
 
 1. turns the name into lower-case letters, digits and dashes, up to 48 characters, such as `fix-login`
 2. refuses if the branch `tess/<name>` already exists, because it never reuses a branch

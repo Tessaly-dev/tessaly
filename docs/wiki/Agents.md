@@ -25,7 +25,7 @@ command = ["bash"]
 
 ## Run an agent
 
-Open a workspace's Agent panel, pick an agent, type a prompt and press Start agent. The agent:
+Click a workspace on the [Home tab](Your-work) to open its agent panel, pick an agent, type a prompt and press Start agent. The agent:
 
 - starts in the worktree, under a terminal 120 columns wide
 - gets your environment minus `TESSALY_*` and `GIT_*` variables, plus `TERM=xterm-256color`, `TESSALY_WORKSPACE` and `TESSALY_BRANCH`
