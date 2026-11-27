@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
+import { sessionKey } from "./http";
+
 // The parts of xterm.js and WebSocket that a terminal session uses, so tests
 // can pass fakes.
 export type TermLike = {
@@ -21,6 +23,13 @@ export type SocketLike = {
 };
 
 const OPEN = 1;
+
+// terminalProtocols returns the WebSocket subprotocols to offer. Browsers
+// cannot set headers on a WebSocket, so the session key rides as the second
+// one. The daemon picks the plain "tessaly", so the key is never echoed.
+export function terminalProtocols(key: string | null = sessionKey()): string[] {
+  return key ? ["tessaly", `tessaly.key.${key}`] : ["tessaly"];
+}
 
 // terminalUrl returns the socket URL for a workspace's terminal on this origin.
 export function terminalUrl(id: number, loc: Location = window.location): string {

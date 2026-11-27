@@ -13,7 +13,7 @@ import (
 	"github.com/tessaly-dev/tessaly/internal/store"
 )
 
-func newWorkspace(t *testing.T, h http.Handler, c *http.Cookie, name string) store.Workspace {
+func newWorkspace(t *testing.T, h http.Handler, c *creds, name string) store.Workspace {
 	t.Helper()
 	repo := addRepoWithCommit(t, h, c)
 	rec := send(t, h, http.MethodPost, "/api/v1/workspaces", wsBody(repo.ID, name), c, nil)
@@ -37,7 +37,7 @@ func startBody(agent, prompt string) string {
 }
 
 // waitState polls the workspace list until ws reaches state.
-func waitState(t *testing.T, h http.Handler, c *http.Cookie, id int64, state string) store.Workspace {
+func waitState(t *testing.T, h http.Handler, c *creds, id int64, state string) store.Workspace {
 	t.Helper()
 	deadline := time.Now().Add(10 * time.Second)
 	for time.Now().Before(deadline) {

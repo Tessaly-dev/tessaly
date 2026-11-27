@@ -249,16 +249,26 @@ func TestServe(t *testing.T) {
 	}
 }
 
-// send makes a request with an optional JSON body, cookie and extra headers.
-func send(t *testing.T, h http.Handler, method, target, body string, cookie *http.Cookie, headers map[string]string) *httptest.ResponseRecorder {
+// creds holds the two halves of a sign-in. Either may be empty, to test
+// requests that carry only one.
+type creds struct {
+	cookie *http.Cookie
+	key    string
+}
+
+// send makes a request with an optional JSON body, session and extra headers.
+func send(t *testing.T, h http.Handler, method, target, body string, s *creds, headers map[string]string) *httptest.ResponseRecorder {
 	t.Helper()
 	req := httptest.NewRequest(method, target, strings.NewReader(body))
 	req.Host = "127.0.0.1:7777"
 	if body != "" {
 		req.Header.Set("Content-Type", "application/json")
 	}
-	if cookie != nil {
-		req.AddCookie(cookie)
+	if s != nil && s.cookie != nil {
+		req.AddCookie(s.cookie)
+	}
+	if s != nil && s.key != "" {
+		req.Header.Set(auth.KeyHeader, s.key)
 	}
 	for k, v := range headers {
 		req.Header.Set(k, v)
@@ -268,11 +278,18 @@ func send(t *testing.T, h http.Handler, method, target, body string, cookie *htt
 	return rec
 }
 
-func sessionCookie(t *testing.T, rec *httptest.ResponseRecorder) *http.Cookie {
+// credsFrom reads the cookie and key from a login reply.
+func credsFrom(t *testing.T, rec *httptest.ResponseRecorder) *creds {
 	t.Helper()
+	var body struct {
+		Key string `json:"key"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil || body.Key == "" {
+		t.Fatalf("login body %q has no key: %v", rec.Body.String(), err)
+	}
 	for _, c := range rec.Result().Cookies() {
 		if c.Name == auth.CookieName {
-			return c
+			return &creds{cookie: c, key: body.Key}
 		}
 	}
 	t.Fatalf("no %s cookie in response", auth.CookieName)
@@ -286,9 +303,9 @@ func TestAPINeedsSignIn(t *testing.T) {
 			t.Errorf("GET %s without session = %d, want 401", p, rec.Code)
 		}
 	}
-	bogus := &http.Cookie{Name: auth.CookieName, Value: testToken}
+	bogus := &creds{cookie: &http.Cookie{Name: auth.CookieName, Value: testToken}, key: testToken}
 	if rec := send(t, h, http.MethodGet, "/api/v1/session", "", bogus, nil); rec.Code != http.StatusUnauthorized {
-		t.Errorf("GET /api/v1/session with unknown cookie = %d, want 401", rec.Code)
+		t.Errorf("GET /api/v1/session with unknown session = %d, want 401", rec.Code)
 	}
 }
 
@@ -300,25 +317,50 @@ func TestAPILoginFlow(t *testing.T) {
 	}
 
 	rec := send(t, h, http.MethodPost, "/api/v1/login", `{"token":"`+testToken+`"}`, nil, nil)
-	if rec.Code != http.StatusNoContent {
-		t.Fatalf("login = %d, want 204", rec.Code)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("login = %d, want 200", rec.Code)
 	}
-	cookie := sessionCookie(t, rec)
-	if !cookie.HttpOnly || cookie.SameSite != http.SameSiteStrictMode {
-		t.Errorf("cookie HttpOnly=%v SameSite=%v, want HttpOnly and Strict", cookie.HttpOnly, cookie.SameSite)
+	if got := rec.Header().Get("Cache-Control"); got != "no-store" {
+		t.Errorf("login Cache-Control = %q, want no-store", got)
+	}
+	c := credsFrom(t, rec)
+	if !c.cookie.HttpOnly || c.cookie.SameSite != http.SameSiteStrictMode {
+		t.Errorf("cookie HttpOnly=%v SameSite=%v, want HttpOnly and Strict", c.cookie.HttpOnly, c.cookie.SameSite)
+	}
+	if c.key == c.cookie.Value {
+		t.Error("session key equals the cookie value")
 	}
 
-	if rec := send(t, h, http.MethodGet, "/api/v1/session", "", cookie, nil); rec.Code != http.StatusOK {
+	// A local server on another port gets the cookie but never the key,
+	// so the cookie alone must not be enough. Nor is the key alone.
+	halves := map[string]*creds{
+		"cookie only": {cookie: c.cookie},
+		"key only":    {key: c.key},
+		"wrong key":   {cookie: c.cookie, key: testToken},
+	}
+	for name, s := range halves {
+		if rec := send(t, h, http.MethodGet, "/api/v1/session", "", s, nil); rec.Code != http.StatusUnauthorized {
+			t.Errorf("session with %s = %d, want 401", name, rec.Code)
+		}
+	}
+
+	if rec := send(t, h, http.MethodGet, "/api/v1/session", "", c, nil); rec.Code != http.StatusOK {
 		t.Errorf("session after login = %d, want 200", rec.Code)
 	}
-	if rec := send(t, h, http.MethodGet, "/api/v1/unknown", "", cookie, nil); rec.Code != http.StatusNotFound {
+	if rec := send(t, h, http.MethodGet, "/api/v1/unknown", "", c, nil); rec.Code != http.StatusNotFound {
 		t.Errorf("unknown route after login = %d, want 404", rec.Code)
 	}
 
-	if rec := send(t, h, http.MethodPost, "/api/v1/logout", "", cookie, nil); rec.Code != http.StatusNoContent {
+	// The cookie alone cannot end the session.
+	send(t, h, http.MethodPost, "/api/v1/logout", "", &creds{cookie: c.cookie}, nil)
+	if rec := send(t, h, http.MethodGet, "/api/v1/session", "", c, nil); rec.Code != http.StatusOK {
+		t.Errorf("session after cookie-only logout = %d, want 200", rec.Code)
+	}
+
+	if rec := send(t, h, http.MethodPost, "/api/v1/logout", "", c, nil); rec.Code != http.StatusNoContent {
 		t.Fatalf("logout = %d, want 204", rec.Code)
 	}
-	if rec := send(t, h, http.MethodGet, "/api/v1/session", "", cookie, nil); rec.Code != http.StatusUnauthorized {
+	if rec := send(t, h, http.MethodGet, "/api/v1/session", "", c, nil); rec.Code != http.StatusUnauthorized {
 		t.Errorf("session after logout = %d, want 401", rec.Code)
 	}
 }
@@ -331,11 +373,11 @@ func TestAPIRejectsCrossSiteRequests(t *testing.T) {
 		headers map[string]string
 		want    int
 	}{
-		{"same origin", map[string]string{"Sec-Fetch-Site": "same-origin"}, http.StatusNoContent},
+		{"same origin", map[string]string{"Sec-Fetch-Site": "same-origin"}, http.StatusOK},
 		{"cross site fetch", map[string]string{"Sec-Fetch-Site": "cross-site"}, http.StatusForbidden},
 		{"same site, other port", map[string]string{"Sec-Fetch-Site": "same-site"}, http.StatusForbidden},
 		{"foreign Origin", map[string]string{"Origin": "http://evil.example"}, http.StatusForbidden},
-		{"matching Origin", map[string]string{"Origin": "http://127.0.0.1:7777"}, http.StatusNoContent},
+		{"matching Origin", map[string]string{"Origin": "http://127.0.0.1:7777"}, http.StatusOK},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

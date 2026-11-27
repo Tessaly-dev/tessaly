@@ -12,6 +12,7 @@ import (
 
 	"github.com/coder/websocket"
 
+	"github.com/tessaly-dev/tessaly/internal/auth"
 	"github.com/tessaly-dev/tessaly/internal/ptyx"
 )
 
@@ -43,8 +44,10 @@ func (h agentHandlers) terminal(w http.ResponseWriter, r *http.Request) {
 	// hijacks the connection, so a long stream is not cut. writeTimeout
 	// still guards each write.
 	// Accept checks that Origin matches Host, so other sites cannot open
-	// the socket even though WebSockets skip CORS.
-	conn, err := websocket.Accept(w, r, nil)
+	// the socket even though WebSockets skip CORS. The browser offers the
+	// session key as a second subprotocol; picking the plain one keeps the
+	// key out of the reply.
+	conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{Subprotocols: []string{auth.Protocol}})
 	if err != nil {
 		return // Accept has written the error reply.
 	}

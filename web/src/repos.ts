@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
-import { errorFrom } from "./http";
+import { apiFetch, errorFrom } from "./http";
 
 export type Repo = { id: number; name: string; path: string; addedAt: string };
 
@@ -10,7 +10,7 @@ export type ReposApi = {
   remove(id: number): Promise<void>;
 };
 
-export function reposApi(fetcher: typeof fetch = fetch): ReposApi {
+export function reposApi(fetcher: typeof fetch = apiFetch): ReposApi {
   return {
     async list() {
       const res = await fetcher("/api/v1/repos", { headers: { Accept: "application/json" } });

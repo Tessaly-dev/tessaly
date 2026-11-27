@@ -3,8 +3,15 @@
 // Package auth guards the Tessaly API with a login token.
 //
 // The daemon keeps one random token in a file only your OS user can read.
-// Signing in with that token gives the browser a session cookie. Every API
-// route except sign-in needs a valid session.
+// Signing in with that token starts a session made of two secrets: an
+// HttpOnly cookie, and a session key the UI keeps in localStorage and sends
+// in the X-Tessaly-Key header. Every API route except sign-in needs both.
+//
+// Browsers send cookies for 127.0.0.1 to every port on it, so any local server
+// you open in the browser gets the cookie. localStorage is scoped to one
+// origin, port included, so that server never sees the key, and the cookie
+// alone is worthless. The cookie stays HttpOnly, so a script cannot take the
+// whole session with it either.
 package auth
 
 import (
@@ -19,6 +26,7 @@ import (
 	"io/fs"
 	"net/http"
 	"os"
+	"strings"
 	"sync"
 	"time"
 )
@@ -26,6 +34,14 @@ import (
 const (
 	// CookieName is the name of the session cookie.
 	CookieName = "tessaly_session"
+	// KeyHeader carries the session key on API requests.
+	KeyHeader = "X-Tessaly-Key"
+	// KeyProtocol prefixes the session key in Sec-WebSocket-Protocol, since
+	// browsers cannot set other headers on a WebSocket.
+	KeyProtocol = "tessaly.key."
+	// Protocol is the WebSocket subprotocol the server picks. It never
+	// echoes the key back.
+	Protocol = "tessaly"
 	// SessionTTL is how long a session lasts after sign-in.
 	SessionTTL = 7 * 24 * time.Hour
 
@@ -96,7 +112,13 @@ type Auth struct {
 	now       func() time.Time
 
 	mu       sync.Mutex
-	sessions map[[sha256.Size]byte]time.Time // session hash -> expiry
+	sessions map[[sha256.Size]byte]session // cookie hash -> session
+}
+
+// session is one sign-in. Only hashes of its secrets are kept.
+type session struct {
+	keyHash [sha256.Size]byte
+	expiry  time.Time
 }
 
 // New returns an Auth that accepts token.
@@ -104,12 +126,13 @@ func New(token string) *Auth {
 	return &Auth{
 		tokenHash: sha256.Sum256([]byte(token)),
 		now:       time.Now,
-		sessions:  make(map[[sha256.Size]byte]time.Time),
+		sessions:  make(map[[sha256.Size]byte]session),
 	}
 }
 
 // Login handles POST {"token": "..."}. On a match it sets the session cookie
-// and replies 204. It replies 401 on a wrong token.
+// and replies 200 with {"key": "..."}, the session key. It replies 401 on a
+// wrong token.
 func (a *Auth) Login(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Token string `json:"token"`
@@ -126,21 +149,30 @@ func (a *Auth) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	session := newSecret()
+	cookie, key := newSecret(), newSecret()
 	a.mu.Lock()
 	a.dropExpiredLocked()
-	a.sessions[sha256.Sum256([]byte(session))] = a.now().Add(SessionTTL)
+	a.sessions[sha256.Sum256([]byte(cookie))] = session{
+		keyHash: sha256.Sum256([]byte(key)),
+		expiry:  a.now().Add(SessionTTL),
+	}
 	a.mu.Unlock()
 
-	http.SetCookie(w, sessionCookie(r, session, int(SessionTTL/time.Second)))
-	w.WriteHeader(http.StatusNoContent)
+	http.SetCookie(w, sessionCookie(r, cookie, int(SessionTTL/time.Second)))
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+	_ = json.NewEncoder(w).Encode(struct {
+		Key string `json:"key"`
+	}{key})
 }
 
 // Logout handles POST. It ends the caller's session and clears the cookie.
+// The session ends only when the request carries its key too, so a server
+// that got the cookie alone cannot sign you out.
 func (a *Auth) Logout(w http.ResponseWriter, r *http.Request) {
-	if c, err := r.Cookie(CookieName); err == nil {
+	if id, ok := a.lookup(r); ok {
 		a.mu.Lock()
-		delete(a.sessions, sha256.Sum256([]byte(c.Value)))
+		delete(a.sessions, id)
 		a.mu.Unlock()
 	}
 	http.SetCookie(w, sessionCookie(r, "", -1))
@@ -167,7 +199,7 @@ func sessionCookie(r *http.Request, value string, maxAge int) *http.Cookie {
 // Other requests get 401.
 func (a *Auth) Require(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !a.signedIn(r) {
+		if _, ok := a.lookup(r); !ok {
 			http.Error(w, "sign in required", http.StatusUnauthorized)
 			return
 		}
@@ -175,30 +207,54 @@ func (a *Auth) Require(next http.Handler) http.Handler {
 	})
 }
 
-func (a *Auth) signedIn(r *http.Request) bool {
+// lookup returns the id of the live session whose cookie and key r carries.
+func (a *Auth) lookup(r *http.Request) ([sha256.Size]byte, bool) {
+	var id [sha256.Size]byte
 	c, err := r.Cookie(CookieName)
 	if err != nil || len(c.Value) != tokenLen {
-		return false
+		return id, false
 	}
-	key := sha256.Sum256([]byte(c.Value))
+	key := requestKey(r)
+	if len(key) != tokenLen {
+		return id, false
+	}
+	id = sha256.Sum256([]byte(c.Value))
+	keyHash := sha256.Sum256([]byte(key))
 
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	expiry, ok := a.sessions[key]
+	s, ok := a.sessions[id]
 	if !ok {
-		return false
+		return id, false
 	}
-	if !a.now().Before(expiry) {
-		delete(a.sessions, key)
-		return false
+	if !a.now().Before(s.expiry) {
+		delete(a.sessions, id)
+		return id, false
 	}
-	return true
+	return id, subtle.ConstantTimeCompare(keyHash[:], s.keyHash[:]) == 1
+}
+
+// requestKey returns the session key from the X-Tessaly-Key header or, for a
+// WebSocket, from a "tessaly.key.<key>" subprotocol. It returns "" if neither
+// is there.
+func requestKey(r *http.Request) string {
+	if k := r.Header.Get(KeyHeader); k != "" {
+		return k
+	}
+	for _, v := range r.Header.Values("Sec-WebSocket-Protocol") {
+		for p := range strings.SplitSeq(v, ",") {
+			if k, ok := strings.CutPrefix(strings.TrimSpace(p), KeyProtocol); ok {
+				return k
+			}
+		}
+	}
+	return ""
 }
 
 func (a *Auth) dropExpiredLocked() {
 	now := a.now()
-	for k, expiry := range a.sessions {
-		if !now.Before(expiry) {
+	for k, s := range a.sessions {
+		if !now.Before(s.expiry) {
 			delete(a.sessions, k)
 		}
 	}

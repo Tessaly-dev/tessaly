@@ -13,6 +13,7 @@ import (
 
 	"github.com/coder/websocket"
 
+	"github.com/tessaly-dev/tessaly/internal/auth"
 	"github.com/tessaly-dev/tessaly/internal/config"
 	"github.com/tessaly-dev/tessaly/internal/store"
 )
@@ -43,18 +44,23 @@ func startServer(t *testing.T, agents map[string]config.Agent) (*httptest.Server
 // sameOrigin is the Origin a browser sends for the UI at 127.0.0.1:7777.
 const sameOrigin = "http://127.0.0.1:7777"
 
-// dial opens the terminal socket for ws with the given cookie and Origin.
-// It returns the handshake status code, or 0 when there was no reply.
-func dial(ctx context.Context, srv *httptest.Server, ws store.Workspace, c *http.Cookie, origin string) (*websocket.Conn, int, error) {
+// dial opens the terminal socket for ws the way the UI does: the cookie in
+// the Cookie header and the key as a subprotocol. It returns the handshake
+// status code, or 0 when there was no reply.
+func dial(ctx context.Context, srv *httptest.Server, ws store.Workspace, c *creds, origin string) (*websocket.Conn, int, error) {
 	url := "ws" + strings.TrimPrefix(srv.URL, "http") + wsPath(ws, "terminal")
 	h := http.Header{}
+	opts := &websocket.DialOptions{HTTPHeader: h}
 	if c != nil {
-		h.Set("Cookie", c.String())
+		if c.cookie != nil {
+			h.Set("Cookie", c.cookie.String())
+		}
+		opts.Subprotocols = []string{auth.Protocol, auth.KeyProtocol + c.key}
 	}
 	if origin != "" {
 		h.Set("Origin", origin)
 	}
-	conn, resp, err := websocket.Dial(ctx, url, &websocket.DialOptions{HTTPHeader: h})
+	conn, resp, err := websocket.Dial(ctx, url, opts)
 	if resp == nil {
 		return conn, 0, err
 	}
@@ -94,6 +100,9 @@ func TestTerminalStreamsAndTakesInput(t *testing.T) {
 		t.Fatalf("dial: %v", err)
 	}
 	defer func() { _ = conn.CloseNow() }()
+	if got := conn.Subprotocol(); got != auth.Protocol {
+		t.Errorf("subprotocol = %q, want %q, so the key is not echoed", got, auth.Protocol)
+	}
 
 	resize, _ := json.Marshal(terminalMessage{Type: "resize", Rows: 40, Cols: 100})
 	if err := conn.Write(ctx, websocket.MessageText, resize); err != nil {
@@ -137,11 +146,13 @@ func TestTerminalRejects(t *testing.T) {
 
 	tests := []struct {
 		name   string
-		cookie *http.Cookie
+		cookie *creds
 		origin string
 		want   int
 	}{
 		{"no session", nil, sameOrigin, http.StatusUnauthorized},
+		{"cookie without key", &creds{cookie: c.cookie}, sameOrigin, http.StatusUnauthorized},
+		{"key without cookie", &creds{key: c.key}, sameOrigin, http.StatusUnauthorized},
 		{"other site", c, "http://evil.example", http.StatusForbidden},
 	}
 	for _, tt := range tests {

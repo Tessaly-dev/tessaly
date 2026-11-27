@@ -38,6 +38,19 @@ test("sign in, run an agent in a workspace, and use its terminal", async ({ page
   await expect(page.getByRole("button", { name: "Sign out" })).toBeVisible();
   expect(page.url()).toBe(`${daemon.url}/`);
 
+  // Browsers send the session cookie to every port on 127.0.0.1, so another
+  // local server would get it. The cookie alone must not reach the API. The
+  // session key from this origin's storage, added to the same cookie, does.
+  const api = `${daemon.url}/api/v1/session`;
+  expect((await page.request.get(api)).status()).toBe(401);
+  const key = await page.evaluate(() => localStorage.getItem("tessaly.sessionKey"));
+  expect(key).toBeTruthy();
+  expect((await page.request.get(api, { headers: { "X-Tessaly-Key": key ?? "" } })).status()).toBe(200);
+
+  // The session survives a reload.
+  await page.reload();
+  await expect(page.getByRole("button", { name: "Sign out" })).toBeVisible();
+
   // Add the repo.
   await page.getByLabel("Repository folder").fill(daemon.repo);
   await page.getByRole("button", { name: "Add repository" }).click();
@@ -77,6 +90,7 @@ test("sign in, run an agent in a workspace, and use its terminal", async ({ page
   // Sign out.
   await page.getByRole("button", { name: "Sign out" }).click();
   await expect(page.getByLabel("Token")).toBeVisible();
+  expect(await page.evaluate(() => localStorage.getItem("tessaly.sessionKey"))).toBeNull();
 
   expect(errors).toEqual([]);
 });
