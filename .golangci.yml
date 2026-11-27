@@ -1,0 +1,21 @@
+version: "2"
+
+linters:
+  # Defaults (errcheck, govet, ineffassign, staticcheck, unused) plus security
+  # and error-handling checks.
+  enable:
+    - bodyclose
+    - errorlint
+    - gosec
+    - misspell
+  settings:
+    errcheck:
+      exclude-functions:
+        - fmt.Fprint
+        - fmt.Fprintf
+        - fmt.Fprintln
+
+formatters:
+  enable:
+    - gofmt
+    - goimports

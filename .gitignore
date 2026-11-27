@@ -1,0 +1,14 @@
+# Build output
+/bin/
+/dist/
+
+# UI build output. dist/.gitkeep stays so go:embed compiles before a UI build.
+/web/node_modules/
+/web/dist/*
+!/web/dist/.gitkeep
+
+# Editor files
+.DS_Store
+*.swp
+.idea/
+.vscode/

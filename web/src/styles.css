@@ -1,0 +1,32 @@
+/* SPDX-License-Identifier: Apache-2.0 */
+:root {
+  color-scheme: light dark;
+  --bg: #f0eee9; /* Cloud Dancer */
+  --fg: #121417;
+  --accent: #b4530a;
+  font-family: system-ui, sans-serif;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #121417;
+    --fg: #f0eee9;
+    --accent: #f5b544;
+  }
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+}
+
+main {
+  max-width: 40rem;
+  margin: 0 auto;
+  padding: 3rem 1rem;
+}
+
+h1 {
+  color: var(--accent);
+}
