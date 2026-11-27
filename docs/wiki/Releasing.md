@@ -61,6 +61,16 @@ Or check the build provenance with the GitHub CLI:
 gh attestation verify tess_<version>_linux_amd64.tar.gz --repo Tessaly-dev/tessaly
 ```
 
+## Install script
+
+`scripts/install.sh` installs the latest release, or the one in `TESS_VERSION`, into `~/.local/bin` (or `TESS_INSTALL_DIR`). It never uses sudo.
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/Tessaly-dev/tessaly/main/scripts/install.sh | sh
+```
+
+It picks the archive for your OS and CPU, checks the cosign signature on `checksums.txt` when cosign is installed, and always checks the archive's SHA-256 before it installs. Set `TESS_REQUIRE_SIGNATURE=1` to stop when cosign is missing. `make test-install` runs its tests against a fake release, with no network.
+
 ## How the workflow stays safe
 
 - It runs only on `v*` tags, and only for commits already on `main`.
