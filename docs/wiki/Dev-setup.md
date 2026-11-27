@@ -1,6 +1,6 @@
 # Dev setup
 
-You need Go 1.24 or newer, Node 20 or newer, pnpm 10, git, and `golangci-lint` v2 for linting. macOS and Linux (amd64 or arm64) work. On Windows, work inside WSL2.
+You need Go 1.26 or newer, Node 20 or newer, pnpm 10, git, and `golangci-lint` v2 for linting. macOS and Linux (amd64 or arm64) work. On Windows, work inside WSL2.
 
 ```sh
 git clone https://github.com/tessaly-dev/tessaly.git
