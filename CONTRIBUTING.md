@@ -13,7 +13,7 @@ Thanks for helping. This guide covers how to set up, how to make a change, and t
 
 Requirements:
 
-- Go 1.26 or newer
+- Go 1.27 or newer
 - Node 20 or newer and pnpm 10
 - git
 - `golangci-lint` v2, for `make lint`
