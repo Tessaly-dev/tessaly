@@ -1,0 +1,13 @@
+# Calls the shared workflow in Tessaly-dev/.github. See its docs/workflows.md.
+name: Triage
+on:
+  issues:
+    types: [opened, labeled]
+  issue_comment:
+    types: [created]
+permissions: {}
+jobs:
+  triage:
+    permissions:
+      issues: write
+    uses: Tessaly-dev/.github/.github/workflows/reusable-triage.yml@61d26daf0b2d99a5b8fdc286faaa995be961a643 # main

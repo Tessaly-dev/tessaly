@@ -1,0 +1,13 @@
+# Calls the shared workflow in Tessaly-dev/.github. See its docs/workflows.md.
+name: Labels
+on:
+  schedule:
+    - cron: "17 4 * * 1"
+  workflow_dispatch:
+permissions: {}
+jobs:
+  sync:
+    permissions:
+      contents: read
+      issues: write
+    uses: Tessaly-dev/.github/.github/workflows/reusable-labels.yml@61d26daf0b2d99a5b8fdc286faaa995be961a643 # main
