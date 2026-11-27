@@ -1,0 +1,54 @@
+name: Bug report
+description: Something in Tessaly does not work as expected.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: Do not report security issues here. Email security@tessaly.dev instead.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Run `tess ...`
+        2. Open ...
+        3. See error
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Tessaly version
+      description: Output of `tess version`
+    validations:
+      required: true
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      options:
+        - macOS (Apple silicon)
+        - macOS (Intel)
+        - Linux amd64
+        - Linux arm64 (including Raspberry Pi)
+        - WSL2
+    validations:
+      required: true
+  - type: input
+    id: agent
+    attributes:
+      label: Agent and version
+      description: For example Claude Code 2.x, Codex 0.x, or a generic CLI.
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Remove tokens, paths and anything private before pasting.
+      render: text

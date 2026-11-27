@@ -1,0 +1,25 @@
+# Keeps pinned action SHAs and dependencies up to date. Updates are grouped
+# into one PR per ecosystem each month, so they trigger fewer CI runs.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      actions:
+        patterns: ["*"]
+  - package-ecosystem: gomod
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      go:
+        patterns: ["*"]
+  - package-ecosystem: npm
+    directory: /web
+    schedule:
+      interval: monthly
+    groups:
+      ui:
+        patterns: ["*"]
