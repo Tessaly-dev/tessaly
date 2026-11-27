@@ -3,6 +3,7 @@
 package auth
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -101,6 +102,82 @@ func login(t *testing.T, a *Auth, body string) *httptest.ResponseRecorder {
 	return rec
 }
 
+func loginKey(t *testing.T, rec *httptest.ResponseRecorder) string {
+	t.Helper()
+	var body struct {
+		Key string `json:"key"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil || len(body.Key) != tokenLen {
+		t.Fatalf("login body %q has no key: %v", rec.Body.String(), err)
+	}
+	return body.Key
+}
+
+func TestRequestKey(t *testing.T) {
+	key := strings.Repeat("K", tokenLen)
+	tests := []struct {
+		name   string
+		header http.Header
+		want   string
+	}{
+		{"none", http.Header{}, ""},
+		{"header", http.Header{"X-Tessaly-Key": {key}}, key},
+		{"subprotocol", http.Header{"Sec-Websocket-Protocol": {"tessaly, " + KeyProtocol + key}}, key},
+		{"subprotocol in its own header", http.Header{"Sec-Websocket-Protocol": {"tessaly", KeyProtocol + key}}, key},
+		{"plain subprotocol only", http.Header{"Sec-Websocket-Protocol": {"tessaly"}}, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, "/", nil)
+			req.Header = tt.header
+			if got := requestKey(req); got != tt.want {
+				t.Errorf("requestKey = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestRequireNeedsCookieAndKey(t *testing.T) {
+	token := strings.Repeat("A", tokenLen)
+	a := New(token)
+	first := login(t, a, `{"token":"`+token+`"}`)
+	second := login(t, a, `{"token":"`+token+`"}`)
+	cookie, key := first.Result().Cookies()[0], loginKey(t, first)
+	otherKey := loginKey(t, second)
+
+	protected := a.Require(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	tests := []struct {
+		name   string
+		cookie *http.Cookie
+		key    string
+		want   int
+	}{
+		{"both", cookie, key, http.StatusOK},
+		{"cookie only", cookie, "", http.StatusUnauthorized},
+		{"key only", nil, key, http.StatusUnauthorized},
+		{"key of another session", cookie, otherKey, http.StatusUnauthorized},
+		{"short key", cookie, key[:10], http.StatusUnauthorized},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, "/api/v1/session", nil)
+			if tt.cookie != nil {
+				req.AddCookie(tt.cookie)
+			}
+			if tt.key != "" {
+				req.Header.Set(KeyHeader, tt.key)
+			}
+			rec := httptest.NewRecorder()
+			protected.ServeHTTP(rec, req)
+			if rec.Code != tt.want {
+				t.Errorf("status = %d, want %d", rec.Code, tt.want)
+			}
+		})
+	}
+}
+
 func TestLoginRejectsBadBodies(t *testing.T) {
 	a := New(strings.Repeat("A", tokenLen))
 	tests := []struct {
@@ -128,13 +205,14 @@ func TestSessionExpires(t *testing.T) {
 	a.now = func() time.Time { return now }
 
 	rec := login(t, a, `{"token":"`+token+`"}`)
-	if rec.Code != http.StatusNoContent {
-		t.Fatalf("login = %d, want 204", rec.Code)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("login = %d, want 200", rec.Code)
 	}
 	cookies := rec.Result().Cookies()
 	if len(cookies) != 1 {
 		t.Fatalf("got %d cookies, want 1", len(cookies))
 	}
+	key := loginKey(t, rec)
 
 	protected := a.Require(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -142,6 +220,7 @@ func TestSessionExpires(t *testing.T) {
 	call := func() int {
 		req := httptest.NewRequest(http.MethodGet, "/api/v1/session", nil)
 		req.AddCookie(cookies[0])
+		req.Header.Set(KeyHeader, key)
 		rec := httptest.NewRecorder()
 		protected.ServeHTTP(rec, req)
 		return rec.Code

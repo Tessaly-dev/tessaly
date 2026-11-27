@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import { errorFrom } from "./http";
+import { apiFetch, errorFrom } from "./http";
 
 export type Workspace = {
   id: number;
@@ -26,7 +26,7 @@ export type WorkspacesApi = {
   stop(id: number): Promise<Workspace>;
 };
 
-export function workspacesApi(fetcher: typeof fetch = fetch): WorkspacesApi {
+export function workspacesApi(fetcher: typeof fetch = apiFetch): WorkspacesApi {
   return {
     async list() {
       const res = await fetcher("/api/v1/workspaces", { headers: { Accept: "application/json" } });

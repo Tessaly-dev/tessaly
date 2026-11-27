@@ -50,7 +50,7 @@ All routes need a signed-in session.
 
 ### Terminal socket
 
-`/api/v1/workspaces/{id}/terminal` upgrades to a WebSocket. The browser must send the session cookie and an `Origin` that matches the host.
+`/api/v1/workspaces/{id}/terminal` upgrades to a WebSocket. The browser must send the session cookie, offer the subprotocols `tessaly` and `tessaly.key.<key>` with the session key from [sign-in](Sign-in), and send an `Origin` that matches the host. The server picks `tessaly`.
 
 - The server sends binary messages with raw terminal output: first the last 1 MiB, then new output as it comes. When no agent runs, it sends the end of the transcript and closes.
 - The browser sends JSON text messages: `{"type": "input", "data": "ls\r"}` for keystrokes, and `{"type": "resize", "rows": 40, "cols": 120}` for a new size. Each message can be up to 64 KiB.

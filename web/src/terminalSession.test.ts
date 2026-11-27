@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { describe, expect, it, vi } from "vitest";
-import { connectTerminal, terminalUrl, type SocketLike, type TermLike } from "./terminalSession";
+import { connectTerminal, terminalProtocols, terminalUrl, type SocketLike, type TermLike } from "./terminalSession";
 
 function fakeTerm() {
   const written: string[] = [];
@@ -84,5 +84,12 @@ describe("connectTerminal", () => {
     expect(socket.closed).toBe(true);
     expect(t.disposed).toEqual(["data", "resize"]);
     expect(socket.onclose).toBeNull();
+  });
+});
+
+describe("terminalProtocols", () => {
+  it("offers the session key after the plain protocol", () => {
+    expect(terminalProtocols("abc")).toEqual(["tessaly", "tessaly.key.abc"]);
+    expect(terminalProtocols(null)).toEqual(["tessaly"]);
   });
 });

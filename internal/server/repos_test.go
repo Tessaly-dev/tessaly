@@ -13,14 +13,14 @@ import (
 	"github.com/tessaly-dev/tessaly/internal/store"
 )
 
-// signIn returns a session cookie for h.
-func signIn(t *testing.T, h http.Handler) *http.Cookie {
+// signIn signs in to h and returns the session.
+func signIn(t *testing.T, h http.Handler) *creds {
 	t.Helper()
 	rec := send(t, h, http.MethodPost, "/api/v1/login", `{"token":"`+testToken+`"}`, nil, nil)
-	if rec.Code != http.StatusNoContent {
+	if rec.Code != http.StatusOK {
 		t.Fatalf("login = %d", rec.Code)
 	}
-	return sessionCookie(t, rec)
+	return credsFrom(t, rec)
 }
 
 func newRepo(t *testing.T, name string) string {

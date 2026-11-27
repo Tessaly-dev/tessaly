@@ -3,7 +3,7 @@ import { useEffect, useRef } from "react";
 import { Terminal as XTerm } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import "@xterm/xterm/css/xterm.css";
-import { connectTerminal, terminalUrl } from "./terminalSession";
+import { connectTerminal, terminalProtocols, terminalUrl } from "./terminalSession";
 
 type Props = {
   workspaceId: number;
@@ -27,7 +27,7 @@ export function Terminal({ workspaceId, session, onClose }: Props) {
     term.open(el);
     fit.fit();
 
-    const end = connectTerminal(term, new WebSocket(terminalUrl(workspaceId)), () => onCloseRef.current?.());
+    const end = connectTerminal(term, new WebSocket(terminalUrl(workspaceId), terminalProtocols()), () => onCloseRef.current?.());
     const observer = new ResizeObserver(() => fit.fit());
     observer.observe(el);
     return () => {

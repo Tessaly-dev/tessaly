@@ -14,7 +14,7 @@ import (
 )
 
 // addRepoWithCommit adds a repo with one commit through the API.
-func addRepoWithCommit(t *testing.T, h http.Handler, c *http.Cookie) store.Repo {
+func addRepoWithCommit(t *testing.T, h http.Handler, c *creds) store.Repo {
 	t.Helper()
 	dir := newRepo(t, "app")
 	cmd := exec.Command("git", "-c", "user.name=T", "-c", "user.email=t@example.com", "commit", "-q", "--allow-empty", "-m", "first")

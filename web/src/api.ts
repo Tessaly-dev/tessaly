@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
-// The daemon API client for sign-in. Every call sends cookies for this origin
-// only, and the server sets them HttpOnly, so scripts never see the session.
+// The daemon API client for sign-in. A session has two halves: an HttpOnly
+// cookie that scripts never see, and a session key that apiFetch sends in a
+// header. The daemon needs both.
+import { apiFetch, setSessionKey } from "./http";
 
 export type AuthApi = {
   isSignedIn(): Promise<boolean>;
@@ -9,7 +11,7 @@ export type AuthApi = {
   signOut(): Promise<void>;
 };
 
-export function authApi(fetcher: typeof fetch = fetch): AuthApi {
+export function authApi(fetcher: typeof fetch = apiFetch): AuthApi {
   return {
     async isSignedIn() {
       const res = await fetcher("/api/v1/session", { headers: { Accept: "application/json" } });
@@ -26,10 +28,14 @@ export function authApi(fetcher: typeof fetch = fetch): AuthApi {
       });
       if (res.status === 401) throw new Error("That token is not right.");
       if (!res.ok) throw new Error(`sign-in failed: ${res.status}`);
+      const body = (await res.json()) as { key?: unknown };
+      if (typeof body.key !== "string" || body.key === "") throw new Error("sign-in reply has no session key");
+      setSessionKey(body.key);
     },
 
     async signOut() {
       const res = await fetcher("/api/v1/logout", { method: "POST" });
+      setSessionKey(null);
       if (!res.ok) throw new Error(`sign-out failed: ${res.status}`);
     },
   };

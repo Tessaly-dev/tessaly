@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { authApi, takeTokenFromHash } from "./api";
+import { sessionKey, setSessionKey } from "./http";
+
+afterEach(() => setSessionKey(null));
 
 function reply(status: number): typeof fetch {
   return vi.fn(async () => new Response(null, { status })) as unknown as typeof fetch;
@@ -13,14 +16,22 @@ describe("authApi", () => {
     await expect(authApi(reply(500)).isSignedIn()).rejects.toThrow("500");
   });
 
-  it("posts the token as JSON", async () => {
-    const fetcher = reply(204);
+  it("posts the token as JSON and keeps the session key", async () => {
+    const fetcher = vi.fn(async () => Response.json({ key: "k1" })) as unknown as typeof fetch;
     await authApi(fetcher).signIn("abc");
     expect(fetcher).toHaveBeenCalledWith("/api/v1/login", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ token: "abc" }),
     });
+    expect(sessionKey()).toBe("k1");
+    expect(localStorage.getItem("tessaly.sessionKey")).toBe("k1");
+  });
+
+  it("refuses a sign-in reply without a key", async () => {
+    const fetcher = vi.fn(async () => Response.json({})) as unknown as typeof fetch;
+    await expect(authApi(fetcher).signIn("abc")).rejects.toThrow("no session key");
+    expect(sessionKey()).toBeNull();
   });
 
   it("explains a wrong token", async () => {
@@ -28,9 +39,14 @@ describe("authApi", () => {
     await expect(authApi(reply(403)).signIn("x")).rejects.toThrow("403");
   });
 
-  it("signs out", async () => {
+  it("signs out and forgets the key", async () => {
+    setSessionKey("k1");
     await expect(authApi(reply(204)).signOut()).resolves.toBeUndefined();
+    expect(sessionKey()).toBeNull();
+    expect(localStorage.getItem("tessaly.sessionKey")).toBeNull();
+    setSessionKey("k2");
     await expect(authApi(reply(500)).signOut()).rejects.toThrow("500");
+    expect(sessionKey()).toBeNull();
   });
 });
 
