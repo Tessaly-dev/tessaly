@@ -89,10 +89,19 @@ test("sign in, run an agent from the home view, and use its terminal", async ({ 
   await expect(detail.getByText("Last run exited with code -1.")).toBeVisible();
   await expect(terminal).toContainText("task: fix the login");
 
-  // Archive the workspace. It leaves the home list.
+  // The board shows the same workspace in its stage, and a click opens it on Home.
+  await page.getByRole("tab", { name: "Board" }).click();
+  await expect(group("Not started")).not.toContainText("fix-login");
+  await group("Ready to review").getByRole("button", { name: /fix-login/ }).click();
+  await expect(page.getByRole("tab", { name: "Home" })).toHaveAttribute("aria-selected", "true");
+  await expect(detail.getByRole("heading", { name: "fix-login" })).toBeVisible();
+
+  // Archive the workspace. It leaves the home list and shows as archived on the board.
   await detail.getByRole("button", { name: "Archive fix-login" }).click();
   await expect(page.getByText("Pick a workspace to see its agent.")).toBeVisible();
   await expect(page.getByRole("button", { name: /fix-login/ })).toHaveCount(0);
+  await page.getByRole("tab", { name: "Board" }).click();
+  await expect(group("Archived")).toContainText("fix-login");
 
   // Sign out.
   await page.getByRole("button", { name: "Sign out" }).click();
