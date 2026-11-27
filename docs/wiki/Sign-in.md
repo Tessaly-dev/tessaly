@@ -23,7 +23,7 @@ A passkey signs you in with your fingerprint, face or device PIN, through WebAut
 2. Open the Passkeys tab, give the passkey a name and select Add a passkey.
 3. Next time, select Sign in with a passkey.
 
-Passkeys work only at `http://localhost:<port>`. Browsers do not accept an IP address such as `127.0.0.1` as a passkey site, and they treat `localhost` as secure without HTTPS. An SSH tunnel to `localhost` works as is: `ssh -L 7777:127.0.0.1:7777 you@host`, then open `http://localhost:7777`. If you open Tessaly at `127.0.0.1`, the sign-in page links to the `localhost` address.
+Passkeys work at `http://localhost:<port>`, and at an `https://` `public_url` (see [Remote access](Remote-access)). Browsers do not accept an IP address such as `127.0.0.1` as a passkey site, and they treat `localhost` as secure without HTTPS. An SSH tunnel to `localhost` works as is: `ssh -L 7777:127.0.0.1:7777 you@host`, then open `http://localhost:7777`. If you open Tessaly at `127.0.0.1` or an `http://` `public_url`, the sign-in page links to the `localhost` address. A passkey belongs to the address it was made on.
 
 ### Token sign-in turns off
 

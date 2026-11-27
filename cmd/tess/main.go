@@ -127,6 +127,13 @@ func serve(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	}
 	defer unlock()
 
+	settings, err := config.Load(filepath.Join(home, "config.toml"))
+	if err != nil {
+		fmt.Fprintf(stderr, "tess serve: %v\n", err)
+		return 1
+	}
+	public := settings.Public()
+
 	tokenPath := filepath.Join(home, "token")
 	token, err := auth.LoadOrCreateToken(tokenPath)
 	if err != nil {
@@ -151,7 +158,7 @@ func serve(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	defer func() { _ = db.Close() }()
 
 	signIn := auth.New(token)
-	if err := signIn.EnablePasskeys(db, *port, *allowToken); err != nil {
+	if err := signIn.EnablePasskeys(db, *port, public, *allowToken); err != nil {
 		fmt.Fprintf(stderr, "tess serve: %v\n", err)
 		return 1
 	}
@@ -164,18 +171,20 @@ func serve(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	fmt.Fprintf(stdout, "%s listening on http://%s\n", version.String(), addr)
 	if !server.IsLoopback(*listen) {
 		fmt.Fprintf(stderr, "tess serve: listening on %s, not only 127.0.0.1. "+
-			"Requests must still use http://%s, and only a container should do this.\n", *listen, local)
+			"Requests must still use http://%s or public_url, and only a container or a VPN address should do this.\n",
+			*listen, local)
+	}
+	if public != nil {
+		fmt.Fprintf(stdout, "Also open at %s\n", public)
+		if public.Scheme != "https" {
+			fmt.Fprintf(stdout, "Passkeys need https, so they do not work at %s. Sign in there with the token "+
+				"while token sign-in is on.\n", public)
+		}
 	}
 	if hasPasskeys && !*allowToken {
 		fmt.Fprintf(stdout, "Open http://%s and sign in with your passkey\n", local)
 	} else {
 		printSignIn(stdout, local, token, tokenPath)
-	}
-
-	settings, err := config.Load(filepath.Join(home, "config.toml"))
-	if err != nil {
-		fmt.Fprintf(stderr, "tess serve: %v\n", err)
-		return 1
 	}
 
 	workspaces := workspace.NewManager(db, home)
@@ -199,6 +208,7 @@ func serve(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 
 	cfg := server.Config{
 		Port:       *port,
+		PublicURL:  public,
 		UI:         web.Dist(),
 		Auth:       signIn,
 		Store:      db,

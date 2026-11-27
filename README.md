@@ -50,7 +50,7 @@ curl http://127.0.0.1:7777/healthz
 # {"status":"ok","version":"..."}
 ```
 
-`tess serve` only ever listens on `127.0.0.1`. To reach it from another device, use an SSH tunnel, a VPN or an HTTPS reverse proxy. Keep the token secret: anyone who has it can use Tessaly as you.
+`tess serve` listens on `127.0.0.1`. To reach it from another device, use an SSH tunnel, or set `public_url` in `~/.tessaly/config.toml` for an HTTPS reverse proxy or a VPN name. See [Remote access](docs/wiki/Remote-access.md). Keep the token secret: anyone who has it can use Tessaly as you.
 
 ## Security
 

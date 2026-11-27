@@ -93,7 +93,7 @@ func TestServeListenWarnsOffLoopback(t *testing.T) {
 	if !strings.Contains(stdout.String(), "listening on http://0.0.0.0:47779") {
 		t.Errorf("stdout = %q, want listen line", stdout.String())
 	}
-	if !strings.Contains(stderr.String(), "only a container should do this") {
+	if !strings.Contains(stderr.String(), "only a container or a VPN address should do this") {
 		t.Errorf("stderr = %q, want a warning", stderr.String())
 	}
 }
@@ -159,4 +159,38 @@ func testHome(t *testing.T) string {
 	}
 	t.Cleanup(func() { _ = os.RemoveAll(dir) })
 	return filepath.Join(dir, "home")
+}
+
+func TestServePrintsPublicURL(t *testing.T) {
+	home := testHome(t)
+	t.Setenv("TESSALY_HOME", home)
+	if err := os.MkdirAll(home, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	for _, tt := range []struct{ url, want, notWant string }{
+		{"https://tess.example.com", "Also open at https://tess.example.com", "Passkeys need https"},
+		{"http://tess.tailnet:7777", "Passkeys need https, so they do not work at http://tess.tailnet:7777", ""},
+	} {
+		if err := os.WriteFile(filepath.Join(home, "config.toml"), []byte(`public_url = "`+tt.url+`"`+"\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		var stdout, stderr bytes.Buffer
+		if code := run(ctx, []string{"serve", "--port", "47779"}, &stdout, &stderr); code != 0 {
+			t.Fatalf("serve = %d: %s", code, stderr.String())
+		}
+		if !strings.Contains(stdout.String(), tt.want) ||
+			(tt.notWant != "" && strings.Contains(stdout.String(), tt.notWant)) {
+			t.Errorf("public_url %s: stdout = %q, want %q", tt.url, stdout.String(), tt.want)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(home, "config.toml"), []byte(`public_url = "tess.example.com"`+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var stdout, stderr bytes.Buffer
+	if code := run(context.Background(), []string{"serve", "--port", "47779"}, &stdout, &stderr); code != 1 ||
+		!strings.Contains(stderr.String(), "public_url") {
+		t.Errorf("bad public_url: code %d, stderr %q, want 1 and an error", code, stderr.String())
+	}
 }

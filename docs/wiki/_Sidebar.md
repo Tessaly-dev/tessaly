@@ -5,6 +5,7 @@
 - [Workspaces](Workspaces)
 - [Pull requests](Pull-requests)
 - [Agents](Agents)
+- [Remote access](Remote-access)
 - [Docker](Docker)
 - [Dev setup](Dev-setup)
 - [Releasing](Releasing)

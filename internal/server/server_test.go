@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -162,6 +163,23 @@ func TestHostCheck(t *testing.T) {
 		rec := do(t, h, http.MethodGet, "/healthz", tt.host)
 		if rec.Code != tt.want {
 			t.Errorf("Host %q status = %d, want %d", tt.host, rec.Code, tt.want)
+		}
+	}
+}
+
+func TestHostCheckAcceptsPublicURL(t *testing.T) {
+	cfg := testConfig(t, testPort, testUI)
+	cfg.PublicURL = &url.URL{Scheme: "https", Host: "tess.example.com"}
+	h := Handler(cfg)
+	for host, want := range map[string]int{
+		"tess.example.com":      http.StatusOK,
+		"TESS.example.com":      http.StatusOK,
+		"127.0.0.1:7777":        http.StatusOK,
+		"tess.example.com:7777": http.StatusForbidden,
+		"evil.example.com":      http.StatusForbidden,
+	} {
+		if rec := do(t, h, http.MethodGet, "/healthz", host); rec.Code != want {
+			t.Errorf("Host %q status = %d, want %d", host, rec.Code, want)
 		}
 	}
 }

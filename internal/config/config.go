@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"net/url"
 	"os"
 	"regexp"
 	"strings"
@@ -17,6 +18,39 @@ import (
 type Config struct {
 	// Agents maps an agent name to how to run it.
 	Agents map[string]Agent `toml:"agents"`
+	// PublicURL is another address the browser reaches tess on, such as
+	// "https://tess.example.com" behind a reverse proxy or a VPN name. Empty
+	// means only localhost. Read it with Public.
+	PublicURL string `toml:"public_url"`
+}
+
+// Public returns PublicURL parsed, or nil when it is empty. Load has
+// already checked it.
+func (c Config) Public() *url.URL {
+	if c.PublicURL == "" {
+		return nil
+	}
+	u, err := ParsePublicURL(c.PublicURL)
+	if err != nil {
+		return nil
+	}
+	return u
+}
+
+// ParsePublicURL checks a public_url: http or https, a host, and nothing
+// else, because tess serves the UI at the root of that host.
+func ParsePublicURL(s string) (*url.URL, error) {
+	u, err := url.Parse(s)
+	if err != nil {
+		return nil, fmt.Errorf("public_url: %w", err)
+	}
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return nil, fmt.Errorf("public_url %q must start with https:// or http://", s)
+	}
+	if u.Hostname() == "" || u.User != nil || (u.Path != "" && u.Path != "/") || u.RawQuery != "" || u.Fragment != "" {
+		return nil, fmt.Errorf("public_url %q must be only a scheme and a host, such as https://tess.example.com", s)
+	}
+	return &url.URL{Scheme: u.Scheme, Host: strings.ToLower(u.Host)}, nil
 }
 
 // Agent is an agent CLI that the generic adapter runs.
@@ -62,6 +96,11 @@ func Load(path string) (Config, error) {
 }
 
 func (c Config) validate() error {
+	if c.PublicURL != "" {
+		if _, err := ParsePublicURL(c.PublicURL); err != nil {
+			return err
+		}
+	}
 	for name, a := range c.Agents {
 		if !agentNameRE.MatchString(name) {
 			return fmt.Errorf("agent name %q must be 1 to 32 lower-case letters, digits or dashes", name)
