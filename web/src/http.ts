@@ -50,10 +50,19 @@ export function setSessionKey(key: string | null): void {
   }
 }
 
+// signedOutEvent fires on window when a signed-in call gets 401, because the
+// session expired or ended, so the app can show the sign-in form.
+export const signedOutEvent = "tessaly:signed-out";
+
 // apiFetch is fetch with the session key added. Every API call uses it.
-export const apiFetch: typeof fetch = (input, init) => {
+export const apiFetch: typeof fetch = async (input, init) => {
   const headers = new Headers(init?.headers);
   const key = sessionKey();
   if (key) headers.set(keyHeader, key);
-  return fetch(input, { ...init, headers });
+  const res = await fetch(input, { ...init, headers });
+  if (res.status === 401 && key) {
+    setSessionKey(null);
+    window.dispatchEvent(new Event(signedOutEvent));
+  }
+  return res;
 };

@@ -38,10 +38,10 @@ cd tessaly
 make setup   # install UI dependencies from the lockfile
 make build   # build the UI and bin/tess
 bin/tess version
-bin/tess serve   # http://127.0.0.1:7777
+bin/tess serve   # http://localhost:7777
 ```
 
-On first start, `tess serve` makes a random login token in `~/.tessaly/token` (mode 0600). In a terminal it prints a sign-in link that carries the token. Otherwise, paste the token into the sign-in form. Set `TESSALY_HOME` to keep the data folder somewhere else.
+On first start, `tess serve` makes a random login token in `~/.tessaly/token` (mode 0600). In a terminal it prints a sign-in link that carries the token. Otherwise, paste the token into the sign-in form. Then add a passkey on the Passkeys tab. Once you have one, only the passkey signs in. Set `TESSALY_HOME` to keep the data folder somewhere else. See [Sign in](docs/wiki/Sign-in.md).
 
 Check the daemon:
 

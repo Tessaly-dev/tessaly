@@ -9,6 +9,9 @@ import { Home } from "./Home";
 import { useWorkspaces } from "./useWorkspaces";
 import { workspacesApi, type WorkspacesApi } from "./workspaces";
 import { SignIn } from "./SignIn";
+import { Passkeys } from "./Passkeys";
+import { signedOutEvent } from "./http";
+import { passkeyApi, type LoginOptions, type PasskeyApi } from "./passkey";
 
 type HealthState =
   | { kind: "loading" }
@@ -24,17 +27,20 @@ type Props = {
   initialToken?: string | null;
   repos?: ReposApi;
   workspaces?: WorkspacesApi;
+  passkeys?: PasskeyApi;
 };
 
 const defaultAuth = authApi();
 const defaultRepos = reposApi();
 const defaultWorkspaces = workspacesApi();
+const defaultPasskeys = passkeyApi();
 
 export function App({ load = fetchHealth, auth = defaultAuth, initialToken = null, repos = defaultRepos,
-  workspaces = defaultWorkspaces,
+  workspaces = defaultWorkspaces, passkeys = defaultPasskeys,
 }: Props) {
   const [health, setHealth] = useState<HealthState>({ kind: "loading" });
   const [authState, setAuthState] = useState<AuthState>("checking");
+  const [loginOptions, setLoginOptions] = useState<LoginOptions | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -58,6 +64,31 @@ export function App({ load = fetchHealth, auth = defaultAuth, initialToken = nul
       active = false;
     };
   }, [auth, initialToken]);
+
+  // Any call that finds the session gone shows the sign-in form.
+  useEffect(() => {
+    const signedOut = () => setAuthState("signedOut");
+    window.addEventListener(signedOutEvent, signedOut);
+    return () => window.removeEventListener(signedOutEvent, signedOut);
+  }, []);
+
+  // The sign-in form needs to know which ways to sign in are open.
+  useEffect(() => {
+    if (authState !== "signedOut") return;
+    let active = true;
+    passkeys
+      .loginOptions()
+      .then((o) => active && setLoginOptions(o))
+      .catch(() => active && setLoginOptions(null));
+    return () => {
+      active = false;
+    };
+  }, [authState, passkeys]);
+
+  async function passkeySignIn() {
+    await passkeys.signIn();
+    setAuthState("signedIn");
+  }
 
   async function signIn(token: string) {
     await auth.signIn(token);
@@ -88,25 +119,26 @@ export function App({ load = fetchHealth, auth = defaultAuth, initialToken = nul
       {authState === "signedOut" && (
         <>
           <p>Run many coding agents in parallel, on your own machine.</p>
-          <SignIn onSignIn={signIn} />
+          <SignIn options={loginOptions} onSignIn={signIn} onPasskey={passkeySignIn} />
         </>
       )}
-      {authState === "signedIn" && <SignedIn repos={repos} workspaces={workspaces} />}
+      {authState === "signedIn" && <SignedIn repos={repos} workspaces={workspaces} passkeys={passkeys} />}
     </main>
   );
 }
 
-type Tab = "home" | "board" | "repos";
+type Tab = "home" | "board" | "repos" | "passkeys";
 
 const tabs: { key: Tab; label: string }[] = [
   { key: "home", label: "Home" },
   { key: "board", label: "Board" },
   { key: "repos", label: "Repositories" },
+  { key: "passkeys", label: "Passkeys" },
 ];
 
 // SignedIn holds the tabs. Every panel stays mounted, so a terminal keeps
 // its connection and the repo list stays loaded while another tab shows.
-function SignedIn({ repos, workspaces }: { repos: ReposApi; workspaces: WorkspacesApi }) {
+function SignedIn({ repos, workspaces, passkeys }: { repos: ReposApi; workspaces: WorkspacesApi; passkeys: PasskeyApi }) {
   const [tab, setTab] = useState<Tab>("home");
   const [repoList, setRepoList] = useState<Repo[]>([]);
   const [selected, setSelected] = useState<number | null>(null);
@@ -153,6 +185,9 @@ function SignedIn({ repos, workspaces }: { repos: ReposApi; workspaces: Workspac
       </div>
       <div role="tabpanel" id="panel-repos" aria-labelledby="tab-repos" hidden={tab !== "repos"}>
         <Repos api={repos} onChange={setRepoList} />
+      </div>
+      <div role="tabpanel" id="panel-passkeys" aria-labelledby="tab-passkeys" hidden={tab !== "passkeys"}>
+        {tab === "passkeys" && <Passkeys api={passkeys} />}
       </div>
     </>
   );

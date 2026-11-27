@@ -13,7 +13,7 @@ docker run -d --name tess \
 docker exec tess cat /data/token
 ```
 
-Open <http://127.0.0.1:7777> and sign in with the token.
+Open <http://localhost:7777> and sign in with the token, then add a passkey on the Passkeys tab. Passkeys work only on `localhost`.
 
 - Publish the port on `127.0.0.1` only, as above. Inside the container tess listens on `0.0.0.0` so Docker can reach it, and the `-p 127.0.0.1:` part keeps it off your network. For remote access, use an SSH tunnel, a VPN or a reverse proxy, as with the binary.
 - Keep the host port the same as the container port. tess only accepts requests for `127.0.0.1:<port>` and `localhost:<port>`, so `-p 127.0.0.1:8080:7777` gets `403 forbidden host`. To use another port, change both: `-p 127.0.0.1:8080:8080` and add `serve --listen 0.0.0.0 --port 8080` at the end of `docker run`.

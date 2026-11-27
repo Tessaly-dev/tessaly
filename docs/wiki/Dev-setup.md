@@ -13,6 +13,6 @@ make dev     # build and run on http://127.0.0.1:7777
 make snapshot  # release archives in dist/, needs GoReleaser (see Releasing)
 ```
 
-For UI work, keep `make dev` running and start `pnpm dev` in `web/`. Vite serves the UI on `127.0.0.1:5173` and forwards `/healthz` and `/api`, including the terminal WebSocket, to the daemon. Sign in with the token from `~/.tessaly/token`. To keep dev data apart from your real data, run the daemon with `TESSALY_HOME=/tmp/tessaly-dev`.
+For UI work, keep `make dev` running and start `pnpm dev` in `web/`. Vite serves the UI on `127.0.0.1:5173` and forwards `/healthz` and `/api`, including the terminal WebSocket, to the daemon. Sign in with the token from `~/.tessaly/token`. Passkeys work only on the daemon's own address, `http://localhost:7777`, not through Vite. To keep dev data apart from your real data, run the daemon with `TESSALY_HOME=/tmp/tessaly-dev`.
 
 Every commit needs a DCO sign-off: `git commit -s`. Read [CONTRIBUTING.md](https://github.com/tessaly-dev/tessaly/blob/main/CONTRIBUTING.md) for the full rules and the security checklist.

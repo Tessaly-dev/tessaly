@@ -36,7 +36,8 @@ describe("authApi", () => {
 
   it("explains a wrong token", async () => {
     await expect(authApi(reply(401)).signIn("x")).rejects.toThrow("not right");
-    await expect(authApi(reply(403)).signIn("x")).rejects.toThrow("403");
+    await expect(authApi(reply(403)).signIn("x")).rejects.toThrow("passkey is registered");
+    await expect(authApi(reply(500)).signIn("x")).rejects.toThrow("500");
     await expect(authApi(reply(429)).signIn("x")).rejects.toThrow("Too many wrong tokens");
   });
 

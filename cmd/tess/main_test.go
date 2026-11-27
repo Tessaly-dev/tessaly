@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/tessaly-dev/tessaly/internal/store"
 )
 
 func TestRun(t *testing.T) {
@@ -107,5 +109,41 @@ func TestServeRefusesOpenHome(t *testing.T) {
 	code := run(context.Background(), []string{"serve", "--port", "47778"}, &stdout, &stderr)
 	if code != 1 || !strings.Contains(stderr.String(), "other users can reach it") {
 		t.Errorf("code = %d, stderr = %q, want 1 and a mode error", code, stderr.String())
+	}
+}
+
+func TestServeSignInHintFollowsPasskeys(t *testing.T) {
+	home := t.TempDir() + "/home"
+	t.Setenv("TESSALY_HOME", home)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	var stdout, stderr bytes.Buffer
+	if code := run(ctx, []string{"serve", "--port", "47778"}, &stdout, &stderr); code != 0 {
+		t.Fatalf("first serve = %d (%s)", code, stderr.String())
+	}
+	db, err := store.Open(context.Background(), filepath.Join(home, "tessaly.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.AddPasskey(context.Background(), []byte{1}, "Laptop", []byte(`{}`)); err != nil {
+		t.Fatal(err)
+	}
+	_ = db.Close()
+
+	stdout.Reset()
+	if code := run(ctx, []string{"serve", "--port", "47778"}, &stdout, &stderr); code != 0 {
+		t.Fatalf("serve = %d (%s)", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "Open http://localhost:47778 and sign in with your passkey") {
+		t.Errorf("with a passkey, stdout = %q, want the passkey hint", stdout.String())
+	}
+
+	stdout.Reset()
+	if code := run(ctx, []string{"serve", "--port", "47778", "--allow-token-login"}, &stdout, &stderr); code != 0 {
+		t.Fatalf("serve --allow-token-login = %d (%s)", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "Sign in with the token in") {
+		t.Errorf("with --allow-token-login, stdout = %q, want the token hint", stdout.String())
 	}
 }
