@@ -21,7 +21,6 @@ const noWorkspaces: WorkspacesApi = {
   agents: async () => [],
   start: async () => Promise.reject(new Error("unused")),
   stop: async () => Promise.reject(new Error("unused")),
-  output: async () => "",
 };
 
 const healthy = async () => ({ status: "ok", version: "v0.0.1" });

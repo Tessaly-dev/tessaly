@@ -1,8 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { Workspaces } from "./Workspaces";
 import type { Workspace, WorkspacesApi } from "./workspaces";
+
+// xterm.js needs a real browser. Its socket logic is tested in terminalSession.test.ts.
+vi.mock("./Terminal", () => ({ Terminal: () => null }));
 
 afterEach(cleanup);
 
@@ -37,7 +40,6 @@ function fakeApi(): WorkspacesApi & { created: [number, string][] } {
       list = list.map((w) => (w.id === id ? { ...w, state: "exited", exitCode: 0 } : w));
       return list.find((w) => w.id === id)!;
     },
-    output: async () => "agent says hi",
   };
 }
 

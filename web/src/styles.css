@@ -116,14 +116,10 @@ textarea {
   margin: 0.5rem 0 1rem;
 }
 
-.output {
-  max-height: 24rem;
-  overflow: auto;
-  padding: 0.75rem;
-  background: #121417;
-  color: #f0eee9;
+.terminal {
+  box-sizing: border-box;
+  height: 24rem;
+  padding: 0.5rem;
+  background: #000;
   border-radius: 0.375rem;
-  font-size: 0.8rem;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
 }

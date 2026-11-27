@@ -15,7 +15,7 @@ export default defineConfig({
     // check passes too.
     proxy: {
       "/healthz": { target: "http://127.0.0.1:7777", changeOrigin: true },
-      "/api": { target: "http://127.0.0.1:7777", changeOrigin: true },
+      "/api": { target: "http://127.0.0.1:7777", changeOrigin: true, ws: true },
     },
   },
   test: {

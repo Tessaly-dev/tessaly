@@ -53,9 +53,4 @@ describe("workspacesApi agent calls", () => {
       body: JSON.stringify({ agent: "aider", prompt: "fix" }),
     });
   });
-
-  it("reads output as text", async () => {
-    const fetcher = vi.fn(async () => new Response("hello\n", { status: 200 })) as unknown as typeof fetch;
-    await expect(workspacesApi(fetcher).output(2)).resolves.toBe("hello\n");
-  });
 });

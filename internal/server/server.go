@@ -81,6 +81,7 @@ func Handler(cfg Config) http.Handler {
 	api.HandleFunc("POST /api/v1/workspaces/{id}/start", agents.start)
 	api.HandleFunc("POST /api/v1/workspaces/{id}/stop", agents.stop)
 	api.HandleFunc("GET /api/v1/workspaces/{id}/output", agents.output)
+	api.HandleFunc("GET /api/v1/workspaces/{id}/terminal", agents.terminal)
 	// Every other API path needs a session too, so unknown paths answer 401
 	// to callers who are not signed in, and 404 to those who are.
 	mux.Handle("/api/", cfg.Auth.Require(api))
@@ -225,10 +226,16 @@ func hostCheck(port int, next http.Handler) http.Handler {
 	})
 }
 
+// csp allows scripts only from this origin. Styles may also be inline,
+// because the terminal (xterm.js) sets colours and sizes with inline styles.
+// Inline styles cannot run code.
+const csp = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; " +
+	"base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'"
+
 func securityHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		h := w.Header()
-		h.Set("Content-Security-Policy", "default-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'")
+		h.Set("Content-Security-Policy", csp)
 		h.Set("X-Content-Type-Options", "nosniff")
 		h.Set("X-Frame-Options", "DENY")
 		h.Set("Referrer-Policy", "no-referrer")

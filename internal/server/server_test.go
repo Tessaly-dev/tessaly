@@ -346,3 +346,16 @@ func TestAPIRejectsCrossSiteRequests(t *testing.T) {
 		})
 	}
 }
+
+func TestCSPKeepsScriptsStrict(t *testing.T) {
+	rec := do(t, testHandler(t, testUI), http.MethodGet, "/", "127.0.0.1:7777")
+	got := rec.Header().Get("Content-Security-Policy")
+	for _, want := range []string{"script-src 'self';", "frame-ancestors 'none'", "object-src 'none'"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("CSP %q lacks %q", got, want)
+		}
+	}
+	if strings.Contains(got, "'unsafe-eval'") || strings.Contains(got, "script-src 'self' 'unsafe-inline'") {
+		t.Errorf("CSP %q allows inline or eval scripts", got)
+	}
+}
