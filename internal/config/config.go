@@ -24,6 +24,10 @@ type Agent struct {
 	// Command is the argv to run. It never goes through a shell. An element
 	// that is exactly "{prompt}" is replaced by the task prompt.
 	Command []string `toml:"command"`
+	// Resume is the argv that picks up the agent's last session in the
+	// worktree, such as ["claude", "--continue"]. It is optional, and it
+	// takes no placeholders, because Tessaly does not keep the prompt.
+	Resume []string `toml:"resume"`
 }
 
 var agentNameRE = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,31}$`)
@@ -68,6 +72,17 @@ func (c Config) validate() error {
 		for _, arg := range a.Command {
 			if strings.ContainsRune(arg, 0) {
 				return fmt.Errorf("agent %q: command holds a NUL byte", name)
+			}
+		}
+		if len(a.Resume) > 0 && a.Resume[0] == "" {
+			return fmt.Errorf("agent %q: resume must start with a program", name)
+		}
+		for _, arg := range a.Resume {
+			if strings.ContainsRune(arg, 0) {
+				return fmt.Errorf("agent %q: resume holds a NUL byte", name)
+			}
+			if arg == "{prompt}" || arg == "{prompt_file}" {
+				return fmt.Errorf("agent %q: resume cannot use %s, because Tessaly does not keep the prompt", name, arg)
 			}
 		}
 	}

@@ -16,6 +16,7 @@ function fakeApi(over: Partial<WorkspacesApi> = {}): WorkspacesApi {
     agents: async () => [],
     start: vi.fn(async () => ({ ...ws, state: "running" })),
     stop: vi.fn(async () => ({ ...ws, state: "exited" })),
+    resume: vi.fn(async () => ({ ...ws, state: "running" })),
     ...over,
   };
 }

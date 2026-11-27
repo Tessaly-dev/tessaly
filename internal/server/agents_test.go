@@ -3,6 +3,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -174,5 +175,57 @@ func TestWorkspaceListShowsWaiting(t *testing.T) {
 	}
 	if len(list) != 1 || !list[0].Waiting || list[0].State != "running" {
 		t.Errorf("list = %+v, want one running workspace that waits", list)
+	}
+}
+
+func TestAgentResumeAPI(t *testing.T) {
+	cfg := testConfig(t, testPort, testUI)
+	h := Handler(cfg)
+	c := signIn(t, h)
+	ws := newWorkspace(t, h, c, "cut-off")
+
+	if rec := send(t, h, http.MethodPost, wsPath(ws, "start"), startBody("sleep", ""), c, nil); rec.Code != http.StatusOK {
+		t.Fatalf("start = %d: %s", rec.Code, rec.Body)
+	}
+	if rec := send(t, h, http.MethodPost, wsPath(ws, "resume"), "", c, nil); rec.Code != http.StatusConflict {
+		t.Errorf("resume while running = %d, want 409", rec.Code)
+	}
+	// Shutting down cuts the run off, as when tess serve stops.
+	cfg.Workspaces.StopAll(context.Background())
+	cut := waitState(t, h, c, ws.ID, "exited")
+	if cut.Ended != "interrupted" {
+		t.Fatalf("ended = %q, want interrupted", cut.Ended)
+	}
+
+	rec := send(t, h, http.MethodPost, wsPath(ws, "resume"), "", c, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("resume = %d: %s", rec.Code, rec.Body)
+	}
+	done := waitState(t, h, c, ws.ID, "exited")
+	if done.Ended != "exited" || done.Agent != "sleep" {
+		t.Errorf("after resume = %+v, want exited on its own as sleep", done)
+	}
+	out := send(t, h, http.MethodGet, wsPath(ws, "output"), "", c, nil).Body.String()
+	if !strings.Contains(out, "resumed") {
+		t.Errorf("output = %q, want the resume command's output", out)
+	}
+	if rec := send(t, h, http.MethodPost, wsPath(ws, "resume"), "", c, nil); rec.Code != http.StatusConflict {
+		t.Errorf("resume after a normal exit = %d, want 409", rec.Code)
+	}
+}
+
+func TestAgentResumeNeedsResumeCommand(t *testing.T) {
+	h := testHandler(t, testUI)
+	c := signIn(t, h)
+	ws := newWorkspace(t, h, c, "no-resume")
+	if rec := send(t, h, http.MethodPost, wsPath(ws, "start"), startBody("echo", "hi"), c, nil); rec.Code != http.StatusOK {
+		t.Fatalf("start = %d: %s", rec.Code, rec.Body)
+	}
+	waitState(t, h, c, ws.ID, "exited")
+	if rec := send(t, h, http.MethodPost, wsPath(ws, "resume"), "", c, nil); rec.Code != http.StatusBadRequest {
+		t.Errorf("resume without a resume command = %d, want 400", rec.Code)
+	}
+	if rec := send(t, h, http.MethodPost, "/api/v1/workspaces/999/resume", "", c, nil); rec.Code != http.StatusNotFound {
+		t.Errorf("resume of a missing workspace = %d, want 404", rec.Code)
 	}
 }

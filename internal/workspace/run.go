@@ -58,6 +58,32 @@ func (m *Manager) Start(ctx context.Context, ws store.Workspace, agentName strin
 	if err != nil {
 		return ws, err
 	}
+	return m.start(ctx, ws, agentName, argv, prompt)
+}
+
+// ErrNotInterrupted means the workspace's last run was not cut off by tess
+// stopping, so there is nothing to resume.
+var ErrNotInterrupted = errors.New("only a run that tess cut off when it stopped can resume")
+
+// Resume runs argv, the agent's resume command, in a workspace whose last
+// run tess interrupted. It runs as the same agent as that run.
+func (m *Manager) Resume(ctx context.Context, id int64, argv []string) (store.Workspace, error) {
+	m.runMu.Lock()
+	defer m.runMu.Unlock()
+
+	ws, err := m.store.Workspace(ctx, id)
+	if err != nil {
+		return ws, err
+	}
+	if ws.State != string(Exited) || ws.Ended != EndInterrupted {
+		return ws, fmt.Errorf("%w: %w", ErrConflict, ErrNotInterrupted)
+	}
+	return m.start(ctx, ws, ws.Agent, argv, "")
+}
+
+// start runs argv in ws. ws must be fresh from the store, and the caller
+// must hold runMu.
+func (m *Manager) start(ctx context.Context, ws store.Workspace, agentName string, argv []string, prompt string) (store.Workspace, error) {
 	if err := checkMove(State(ws.State), Running); err != nil {
 		return ws, fmt.Errorf("%w: %w", ErrConflict, err)
 	}

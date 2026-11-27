@@ -18,6 +18,7 @@ import (
 type agentInfo struct {
 	Name    string   `json:"name"`
 	Command []string `json:"command"`
+	Resume  []string `json:"resume,omitempty"`
 }
 
 type agentHandlers struct {
@@ -28,7 +29,7 @@ type agentHandlers struct {
 func (h agentHandlers) list(w http.ResponseWriter, _ *http.Request) {
 	list := make([]agentInfo, 0, len(h.agents))
 	for name, a := range h.agents {
-		list = append(list, agentInfo{Name: name, Command: a.Command})
+		list = append(list, agentInfo{Name: name, Command: a.Command, Resume: a.Resume})
 	}
 	sort.Slice(list, func(i, j int) bool { return list[i].Name < list[j].Name })
 	writeJSON(w, http.StatusOK, list)
@@ -68,6 +69,31 @@ func (h agentHandlers) start(w http.ResponseWriter, r *http.Request) {
 	case err != nil:
 		// A missing program is the usual cause, and the message names only
 		// the program from the user's own config.
+		writeError(w, http.StatusBadRequest, err.Error())
+	default:
+		writeJSON(w, http.StatusOK, ws)
+	}
+}
+
+// resume runs the resume command of the agent whose run tess cut off. Like
+// start, the command only ever comes from the config file.
+func (h agentHandlers) resume(w http.ResponseWriter, r *http.Request) {
+	ws, ok := h.ws.find(w, r)
+	if !ok {
+		return
+	}
+	cfg, ok := h.agents[ws.Agent]
+	if !ok || len(cfg.Resume) == 0 {
+		writeError(w, http.StatusBadRequest, "this agent has no resume command. Add resume to it in config.toml")
+		return
+	}
+	ws, err := h.ws.manager.Resume(r.Context(), ws.ID, cfg.Resume)
+	switch {
+	case errors.Is(err, workspace.ErrConflict):
+		writeError(w, http.StatusConflict, workspace.ErrNotInterrupted.Error())
+	case errors.Is(err, workspace.ErrTooManyRunning):
+		writeError(w, http.StatusTooManyRequests, err.Error())
+	case err != nil:
 		writeError(w, http.StatusBadRequest, err.Error())
 	default:
 		writeJSON(w, http.StatusOK, ws)

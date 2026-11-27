@@ -19,7 +19,8 @@ export type Workspace = {
   waiting?: boolean;
 };
 
-export type Agent = { name: string; command: string[] };
+// resume, when set, is the command that picks up the agent's last session.
+export type Agent = { name: string; command: string[]; resume?: string[] };
 
 export type WorkspacesApi = {
   list(): Promise<Workspace[]>;
@@ -28,6 +29,7 @@ export type WorkspacesApi = {
   agents(): Promise<Agent[]>;
   start(id: number, agent: string, prompt: string): Promise<Workspace>;
   stop(id: number): Promise<Workspace>;
+  resume(id: number): Promise<Workspace>;
 };
 
 export function workspacesApi(fetcher: typeof fetch = apiFetch): WorkspacesApi {
@@ -73,6 +75,12 @@ export function workspacesApi(fetcher: typeof fetch = apiFetch): WorkspacesApi {
     async stop(id: number) {
       const res = await fetcher(`/api/v1/workspaces/${encodeURIComponent(String(id))}/stop`, { method: "POST" });
       if (!res.ok) throw await errorFrom(res, "stopping the agent");
+      return (await res.json()) as Workspace;
+    },
+
+    async resume(id: number) {
+      const res = await fetcher(`/api/v1/workspaces/${encodeURIComponent(String(id))}/resume`, { method: "POST" });
+      if (!res.ok) throw await errorFrom(res, "resuming the agent");
       return (await res.json()) as Workspace;
     },
   };

@@ -9,6 +9,9 @@ export type Daemon = {
   url: string;
   token: string;
   repo: string;
+  // restart stops tess serve and starts it again with the same data folder,
+  // so agents that ran are cut off, as in a real restart.
+  restart(): Promise<void>;
   stop(): Promise<void>;
 };
 
@@ -26,7 +29,8 @@ export async function startDaemon(port: number): Promise<Daemon> {
   // simple interactive agent. No shell parses the prompt: it is "$1".
   writeFileSync(
     path.join(home, "config.toml"),
-    `[agents.echo]\ncommand = ["sh", "-c", "echo \\"task: $1\\"; exec cat", "echo-agent", "{prompt}"]\n`,
+    `[agents.echo]\ncommand = ["sh", "-c", "echo \\"task: $1\\"; exec cat", "echo-agent", "{prompt}"]\n` +
+      `resume = ["sh", "-c", "echo resumed; exec cat"]\n`,
     { mode: 0o600 },
   );
 
@@ -37,6 +41,28 @@ export async function startDaemon(port: number): Promise<Daemon> {
   git("init", "-q");
   git("commit", "-q", "--allow-empty", "-m", "first");
 
+  const url = `http://127.0.0.1:${port}`;
+  let proc = await serve(port, home, url);
+  const token = readFileSync(path.join(home, "token"), "utf8").trim();
+
+  return {
+    url,
+    token,
+    repo,
+    async restart() {
+      await stopProcess(proc);
+      proc = await serve(port, home, url);
+    },
+    async stop() {
+      await stopProcess(proc);
+      rmSync(root, { recursive: true, force: true });
+    },
+  };
+}
+
+// serve starts tess serve on port with home as its data folder, and waits
+// until it answers.
+async function serve(port: number, home: string, url: string): Promise<ChildProcess> {
   const proc = spawn(binary, ["serve", "--port", String(port)], {
     env: { ...process.env, TESSALY_HOME: home },
     stdio: ["ignore", "pipe", "pipe"],
@@ -44,20 +70,8 @@ export async function startDaemon(port: number): Promise<Daemon> {
   let log = "";
   proc.stdout?.on("data", (b) => (log += b));
   proc.stderr?.on("data", (b) => (log += b));
-
-  const url = `http://127.0.0.1:${port}`;
   await waitHealthy(url, proc, () => log);
-  const token = readFileSync(path.join(home, "token"), "utf8").trim();
-
-  return {
-    url,
-    token,
-    repo,
-    async stop() {
-      await stopProcess(proc);
-      rmSync(root, { recursive: true, force: true });
-    },
-  };
+  return proc;
 }
 
 async function waitHealthy(url: string, proc: ChildProcess, log: () => string) {

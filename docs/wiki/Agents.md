@@ -12,6 +12,7 @@ command = ["aider", "--message-file", "{prompt_file}"]
 
 [agents.claude]
 command = ["claude", "{prompt}"]
+resume = ["claude", "--continue"]
 
 [agents.shell]
 command = ["bash"]
@@ -20,6 +21,7 @@ command = ["bash"]
 - `command` is an argv array. Tessaly never runs it through a shell, so `|`, `&&` and `$VAR` have no special meaning.
 - An element that is exactly `{prompt}` is replaced by the task prompt, as one argument. `{prompt}` inside a longer element is left alone.
 - An element that is exactly `{prompt_file}` is replaced by the path of a file that holds the prompt. Use it when the CLI can read its task from a file. Arguments show in `ps` to every user on the machine, and a file does not. Tessaly writes the file to `~/.tessaly/prompts/workspace-<id>.txt` with mode 0600 just before the agent starts, and deletes it when the agent exits.
+- `resume` is optional. It is the argv that picks the agent's last session back up in the worktree. It cannot use `{prompt}` or `{prompt_file}`, because Tessaly does not keep the prompt. See [Resume after a restart](#resume-after-a-restart).
 - Agent names use lower-case letters, digits and dashes, up to 32 characters.
 - Tessaly refuses to start if other users can write the file (`chmod go-w ~/.tessaly/config.toml`).
 
@@ -40,6 +42,12 @@ The panel shows the agent's terminal live. Click into it to type: keystrokes go 
 Press Stop agent to end it. Tessaly sends SIGTERM to the agent and every process it started, and SIGKILL after 10 seconds. When the agent exits, the workspace shows `exited` and the exit code. You can start an agent again in an exited workspace.
 
 Stopping `tess serve` stops every agent. A workspace that was running when Tessaly crashed shows `exited` on the next start.
+
+### Resume after a restart
+
+When `tess serve` stops or crashes while an agent runs, the run is cut off. On the next start the workspace sits under Needs your input on the [Home tab](Your-work) as "Cut off when tess stopped". Nothing restarts on its own.
+
+If the agent has a `resume` command, the workspace shows a Resume button. Press it to run that command in the worktree, as the same agent. Without one, open the workspace and start a new run.
 
 ### How a run ended
 
@@ -63,8 +71,9 @@ All routes need a signed-in session.
 
 | Method and path | Body | Reply |
 | --- | --- | --- |
-| `GET /api/v1/agents` | none | `200` with `[{name, command}]` |
+| `GET /api/v1/agents` | none | `200` with `[{name, command, resume}]`. `resume` is left out when the agent has none |
 | `POST /api/v1/workspaces/{id}/start` | `{"agent": "aider", "prompt": "..."}` | `200` with the workspace. `400` for an unknown agent, a bad prompt or a missing program. `409` unless the workspace is ready or exited. `429` when 16 agents run already |
+| `POST /api/v1/workspaces/{id}/resume` | none | `200` with the workspace. `400` if the last run's agent has no `resume` command. `409` unless tess cut off the last run. `429` when 16 agents run already |
 | `POST /api/v1/workspaces/{id}/stop` | none | `200` once the agent has exited. `409` if none runs |
 | `GET /api/v1/workspaces/{id}/output` | none | `200` with the last 1 MiB of output as `text/plain` |
 | `GET /api/v1/workspaces/{id}/terminal` | WebSocket | See below |

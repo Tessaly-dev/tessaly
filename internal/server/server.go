@@ -79,6 +79,7 @@ func Handler(cfg Config) http.Handler {
 	agents := agentHandlers{agents: cfg.Agents, ws: ws}
 	api.HandleFunc("GET /api/v1/agents", agents.list)
 	api.HandleFunc("POST /api/v1/workspaces/{id}/start", agents.start)
+	api.HandleFunc("POST /api/v1/workspaces/{id}/resume", agents.resume)
 	api.HandleFunc("POST /api/v1/workspaces/{id}/stop", agents.stop)
 	api.HandleFunc("GET /api/v1/workspaces/{id}/output", agents.output)
 	api.HandleFunc("GET /api/v1/workspaces/{id}/terminal", agents.terminal)
