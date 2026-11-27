@@ -176,6 +176,7 @@ func TestSecurityHeaders(t *testing.T) {
 			"X-Content-Type-Options",
 			"X-Frame-Options",
 			"Referrer-Policy",
+			"Permissions-Policy",
 		} {
 			if rec.Header().Get(name) == "" {
 				t.Errorf("Host %q: missing header %s", host, name)
@@ -321,6 +322,21 @@ func TestAPINeedsSignIn(t *testing.T) {
 	for _, p := range []string{"/api/v1/session", "/api/v1/unknown", "/api/"} {
 		if rec := send(t, h, http.MethodGet, p, "", nil, nil); rec.Code != http.StatusUnauthorized {
 			t.Errorf("GET %s without session = %d, want 401", p, rec.Code)
+		}
+	}
+	// Every route except sign-in and sign-out needs a session.
+	for _, route := range []string{
+		"GET /api/v1/repos", "POST /api/v1/repos", "DELETE /api/v1/repos/1",
+		"GET /api/v1/workspaces", "POST /api/v1/workspaces", "POST /api/v1/workspaces/1/archive",
+		"GET /api/v1/workspaces/1/diff", "POST /api/v1/workspaces/1/ship", "GET /api/v1/agents",
+		"POST /api/v1/workspaces/1/start", "POST /api/v1/workspaces/1/resume", "POST /api/v1/workspaces/1/stop",
+		"GET /api/v1/workspaces/1/output", "GET /api/v1/workspaces/1/terminal",
+		"GET /api/v1/passkeys", "POST /api/v1/passkeys/register/begin", "POST /api/v1/passkeys/register/finish",
+		"POST /api/v1/passkeys/verify/begin", "POST /api/v1/passkeys/verify/finish", "DELETE /api/v1/passkeys/1",
+	} {
+		method, p, _ := strings.Cut(route, " ")
+		if rec := send(t, h, method, p, "{}", nil, nil); rec.Code != http.StatusUnauthorized {
+			t.Errorf("%s without session = %d, want 401", route, rec.Code)
 		}
 	}
 	bogus := &creds{cookie: &http.Cookie{Name: auth.CookieName, Value: testToken}, key: testToken}

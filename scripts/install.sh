@@ -46,7 +46,8 @@ detect_arch() {
 # latest_version reads the tag that github.com/<repo>/releases/latest
 # redirects to, so it needs no API token and no JSON parser.
 latest_version() {
-	url=$(curl -fsSLI -o /dev/null -w '%{url_effective}' "https://github.com/${REPO}/releases/latest") ||
+	url=$(curl -fsSLI --proto '=https' --proto-redir '=https' -o /dev/null -w '%{url_effective}' \
+		"https://github.com/${REPO}/releases/latest") ||
 		fail "could not find the latest release"
 	tag=${url##*/}
 	valid_version "$tag" || fail "no published release found"
@@ -102,7 +103,9 @@ main() {
 
 	say "downloading tess ${version} for ${os}/${arch}"
 	for f in "$archive" checksums.txt checksums.txt.sigstore.json; do
-		curl -fsSL --proto '=https,file' -o "$tmp/$f" "$base/$f" || fail "could not download $base/$f"
+		# Redirects stay on HTTPS, so nobody on the path can swap the files.
+		curl -fsSL --proto '=https,file' --proto-redir '=https' -o "$tmp/$f" "$base/$f" ||
+			fail "could not download $base/$f"
 	done
 
 	verify_signature "$tmp"
