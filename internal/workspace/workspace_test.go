@@ -396,6 +396,39 @@ func TestStopAndStopAll(t *testing.T) {
 	}
 }
 
+func TestResume(t *testing.T) {
+	ctx := context.Background()
+	m, repo := setup(t)
+	ws := startAgent(t, m, repo, "cut", "sleep", "60")
+
+	if _, err := m.Resume(ctx, ws.ID, []string{"true"}); !errors.Is(err, ErrConflict) {
+		t.Errorf("resume while running: err = %v, want ErrConflict", err)
+	}
+	m.StopAll(ctx)
+	waitExited(t, m, ws.ID)
+
+	got, err := m.Resume(ctx, ws.ID, []string{"sh", "-c", "echo picked up"})
+	if err != nil {
+		t.Fatalf("Resume: %v", err)
+	}
+	if got.State != string(Running) || got.Agent != "test" || got.Ended != "" {
+		t.Errorf("resumed = %+v, want running as the same agent", got)
+	}
+	got = waitExited(t, m, ws.ID)
+	if got.Ended != EndExited {
+		t.Errorf("after resume ended = %q, want %q", got.Ended, EndExited)
+	}
+	transcript, _ := os.ReadFile(m.TranscriptPath(ws.ID))
+	if !strings.Contains(string(transcript), "picked up") {
+		t.Errorf("transcript lacks the resumed run:\n%s", transcript)
+	}
+
+	// A run that ended on its own does not resume.
+	if _, err := m.Resume(ctx, ws.ID, []string{"true"}); !errors.Is(err, ErrConflict) {
+		t.Errorf("resume after a normal exit: err = %v, want ErrConflict", err)
+	}
+}
+
 func TestWaiting(t *testing.T) {
 	m, repo := setup(t)
 	m.IdleAfter = 200 * time.Millisecond

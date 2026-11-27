@@ -32,6 +32,7 @@ func TestLoadAgents(t *testing.T) {
 	path := writeConfig(t, `
 [agents.aider]
 command = ["aider", "--message", "{prompt}"]
+resume = ["aider", "--restore-chat-history"]
 
 [agents.shell-bot]
 command = ["/usr/local/bin/bot"]
@@ -43,8 +44,11 @@ command = ["/usr/local/bin/bot"]
 	if got := cfg.Agents["aider"].Command; len(got) != 3 || got[2] != "{prompt}" {
 		t.Errorf("aider command = %q", got)
 	}
-	if _, ok := cfg.Agents["shell-bot"]; !ok {
-		t.Error("shell-bot missing")
+	if got := cfg.Agents["aider"].Resume; len(got) != 2 || got[1] != "--restore-chat-history" {
+		t.Errorf("aider resume = %q", got)
+	}
+	if bot, ok := cfg.Agents["shell-bot"]; !ok || bot.Resume != nil {
+		t.Errorf("shell-bot = %+v, %v; want it with no resume", bot, ok)
 	}
 }
 
@@ -62,6 +66,9 @@ func TestLoadRejects(t *testing.T) {
 		{"empty command", "[agents.x]\ncommand = []\n", 0o600, "needs a command"},
 		{"blank program", "[agents.x]\ncommand = [\"\"]\n", 0o600, "needs a command"},
 		{"string command", "[agents.x]\ncommand = \"rm -rf ~\"\n", 0o600, "read"},
+		{"blank resume program", "[agents.x]\ncommand = [\"x\"]\nresume = [\"\"]\n", 0o600, "resume must start"},
+		{"resume with prompt", "[agents.x]\ncommand = [\"x\"]\nresume = [\"x\", \"{prompt}\"]\n", 0o600, "does not keep the prompt"},
+		{"resume with prompt file", "[agents.x]\ncommand = [\"x\"]\nresume = [\"x\", \"{prompt_file}\"]\n", 0o600, "does not keep the prompt"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

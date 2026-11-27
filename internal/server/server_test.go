@@ -56,7 +56,7 @@ func testConfig(t *testing.T, port int, ui fstest.MapFS) Config {
 		Workspaces: workspace.NewManager(db, t.TempDir()),
 		Agents: map[string]config.Agent{
 			"echo":  {Command: []string{"printf", "said: %s\\n", "{prompt}"}},
-			"sleep": {Command: []string{"sleep", "60"}},
+			"sleep": {Command: []string{"sleep", "60"}, Resume: []string{"printf", "resumed\\n"}},
 			"file":  {Command: []string{"cat", "{prompt_file}"}},
 		},
 	}

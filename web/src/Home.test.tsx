@@ -38,9 +38,13 @@ function fakeApi(start: Workspace[] = []): WorkspacesApi & { created: [number, s
       return w;
     },
     archive: async (id) => update(id, { state: "archived" }),
-    agents: async () => [{ name: "aider", command: ["aider", "{prompt}"] }],
+    agents: async () => [
+      { name: "aider", command: ["aider", "{prompt}"], resume: ["aider", "--restore-chat-history"] },
+      { name: "plain", command: ["plain"] },
+    ],
     start: async (id) => update(id, { state: "running", agent: "aider" }),
     stop: async (id) => update(id, { state: "exited", exitCode: -1, ended: "stopped" }),
+    resume: async (id) => update(id, { state: "running", ended: undefined }),
   };
 }
 
@@ -126,5 +130,24 @@ describe("Home", () => {
     fireEvent.click(screen.getByRole("button", { name: "Archive task" }));
     expect(await screen.findByText("Pick a workspace to see its agent.")).toBeTruthy();
     expect(screen.queryByRole("button", { name: /task/ })).toBeNull();
+  });
+
+  it("offers Resume for a run tess cut off, when its agent can resume", async () => {
+    render(
+      <Harness
+        api={fakeApi([
+          ws({ id: 1, slug: "cut", state: "exited", ended: "interrupted", exitCode: -1, agent: "aider" }),
+          ws({ id: 2, slug: "cut-plain", state: "exited", ended: "interrupted", exitCode: -1, agent: "plain" }),
+        ])}
+      />,
+    );
+    const input = await screen.findByRole("region", { name: "Needs your input" });
+    expect(within(input).getAllByText("Cut off when tess stopped")).toHaveLength(2);
+    expect(within(input).queryByRole("button", { name: "Resume cut-plain" })).toBeNull();
+
+    fireEvent.click(await within(input).findByRole("button", { name: "Resume cut" }));
+    const running = await screen.findByRole("region", { name: "Running" });
+    expect(within(running).getByText("cut")).toBeTruthy();
+    expect(screen.getByRole("heading", { level: 2, name: "cut" })).toBeTruthy();
   });
 });

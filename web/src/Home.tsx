@@ -26,6 +26,20 @@ export function Home({ list, repos, agents, api, refresh, selected, onSelect }: 
   const repoName = (id: number) => repos.find((r) => r.id === id)?.name ?? `repo ${id}`;
   const open = list?.find((w) => w.id === selected && w.state !== "archived");
 
+  // canResume reports whether the agent of ws's last run has a resume command.
+  const canResume = (ws: Workspace) => (agents.find((a) => a.name === ws.agent)?.resume?.length ?? 0) > 0;
+
+  async function resume(ws: Workspace) {
+    setError(null);
+    try {
+      await api.resume(ws.id);
+      onSelect(ws.id);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+    await refresh();
+  }
+
   async function archive(ws: Workspace) {
     setError(null);
     try {
@@ -41,6 +55,7 @@ export function Home({ list, repos, agents, api, refresh, selected, onSelect }: 
     <div className="home">
       <section aria-labelledby="needs-title" className="needs">
         <h2 id="needs-title">Your work</h2>
+        {error && !open && <p role="alert">{error}</p>}
         {list && groups.length === 0 && <p className="hint">Nothing here yet. Create a workspace below.</p>}
         {groups.map((g) => (
           <section key={g.key} aria-label={g.title} className={`group group-${g.key}`}>
@@ -63,6 +78,11 @@ export function Home({ list, repos, agents, api, refresh, selected, onSelect }: 
                     </span>
                     <span className="item-reason">{reason(w)}</span>
                   </button>
+                  {w.ended === "interrupted" && w.state === "exited" && canResume(w) && (
+                    <button type="button" className="resume" onClick={() => void resume(w)} aria-label={`Resume ${w.slug}`}>
+                      Resume
+                    </button>
+                  )}
                 </li>
               ))}
             </ul>
