@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -71,6 +72,8 @@ func serve(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	port := fs.Int("port", server.DefaultPort, "port to listen on")
 	listen := fs.String("listen", server.DefaultListen,
 		"IP address to listen on. Keep 127.0.0.1 unless tess runs in a container")
+	allowToken := fs.Bool("allow-token-login", false,
+		"keep token sign-in on after you register a passkey")
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return 0
@@ -87,9 +90,10 @@ func serve(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "tess serve: %v\n", err)
 		return 2
 	}
-	// The browser always reaches tess as 127.0.0.1, because the Host check
-	// accepts nothing else. In a container, that is the published port.
-	local, _ := server.Addr(server.DefaultListen, *port)
+	// The browser always reaches tess on this machine's loopback, because the
+	// Host check accepts nothing else. In a container, that is the published
+	// port. The link uses localhost, the only host name passkeys work on.
+	local := net.JoinHostPort(auth.PasskeyHost, strconv.Itoa(*port))
 
 	home, err := config.Home()
 	if err == nil {
@@ -112,13 +116,6 @@ func serve(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 
-	fmt.Fprintf(stdout, "%s listening on http://%s\n", version.String(), addr)
-	if !server.IsLoopback(*listen) {
-		fmt.Fprintf(stderr, "tess serve: listening on %s, not only 127.0.0.1. "+
-			"Requests must still use http://%s, and only a container should do this.\n", *listen, local)
-	}
-	printSignIn(stdout, local, token, tokenPath)
-
 	// Startup steps such as migrations run to the end even if Ctrl-C arrives
 	// meanwhile.
 	startCtx := context.WithoutCancel(ctx)
@@ -128,6 +125,28 @@ func serve(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 	defer func() { _ = db.Close() }()
+
+	signIn := auth.New(token)
+	if err := signIn.EnablePasskeys(db, *port, *allowToken); err != nil {
+		fmt.Fprintf(stderr, "tess serve: %v\n", err)
+		return 1
+	}
+	hasPasskeys, err := db.HasPasskeys(startCtx)
+	if err != nil {
+		fmt.Fprintf(stderr, "tess serve: %v\n", err)
+		return 1
+	}
+
+	fmt.Fprintf(stdout, "%s listening on http://%s\n", version.String(), addr)
+	if !server.IsLoopback(*listen) {
+		fmt.Fprintf(stderr, "tess serve: listening on %s, not only 127.0.0.1. "+
+			"Requests must still use http://%s, and only a container should do this.\n", *listen, local)
+	}
+	if hasPasskeys && !*allowToken {
+		fmt.Fprintf(stdout, "Open http://%s and sign in with your passkey\n", local)
+	} else {
+		printSignIn(stdout, local, token, tokenPath)
+	}
 
 	settings, err := config.Load(filepath.Join(home, "config.toml"))
 	if err != nil {
@@ -148,7 +167,7 @@ func serve(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	cfg := server.Config{
 		Port:       *port,
 		UI:         web.Dist(),
-		Auth:       auth.New(token),
+		Auth:       signIn,
 		Store:      db,
 		Workspaces: workspaces,
 		Agents:     settings.Agents,

@@ -86,11 +86,20 @@ func Handler(cfg Config) http.Handler {
 	mux.Handle("/", uiHandler(cfg.UI))
 
 	// Sign-in and sign-out are the only API routes open without a session.
+	mux.HandleFunc("GET /api/v1/login", cfg.Auth.LoginOptions)
 	mux.HandleFunc("POST /api/v1/login", cfg.Auth.Login)
+	mux.HandleFunc("POST /api/v1/login/passkey/begin", cfg.Auth.PasskeyLoginBegin)
+	mux.HandleFunc("POST /api/v1/login/passkey/finish", cfg.Auth.PasskeyLoginFinish)
 	mux.HandleFunc("POST /api/v1/logout", cfg.Auth.Logout)
 
 	api := http.NewServeMux()
 	api.HandleFunc("GET /api/v1/session", session)
+	api.HandleFunc("GET /api/v1/passkeys", cfg.Auth.ListPasskeys)
+	api.HandleFunc("POST /api/v1/passkeys/register/begin", cfg.Auth.RegisterBegin)
+	api.HandleFunc("POST /api/v1/passkeys/register/finish", cfg.Auth.RegisterFinish)
+	api.HandleFunc("POST /api/v1/passkeys/verify/begin", cfg.Auth.VerifyBegin)
+	api.HandleFunc("POST /api/v1/passkeys/verify/finish", cfg.Auth.VerifyFinish)
+	api.HandleFunc("DELETE /api/v1/passkeys/{id}", cfg.Auth.DeletePasskey)
 	repos := repoHandlers{store: cfg.Store, addMu: &sync.Mutex{}}
 	api.HandleFunc("GET /api/v1/repos", repos.list)
 	api.HandleFunc("POST /api/v1/repos", repos.add)

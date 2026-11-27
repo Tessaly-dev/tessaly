@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 
-// Package auth guards the Tessaly API with a login token.
+// Package auth guards the Tessaly API with passkeys and a login token.
 //
 // The daemon keeps one random token in a file only your OS user can read.
-// Signing in with that token starts a session made of two secrets: an
+// You sign in with that token until you register a passkey. After that only
+// a passkey signs in, unless tess serve runs with --allow-token-login.
+// Either way, signing in starts a session made of two secrets: an
 // HttpOnly cookie, and a session key the UI keeps in localStorage and sends
 // in the X-Tessaly-Key header. Every API route except sign-in needs both.
 //
@@ -16,6 +18,7 @@ package auth
 
 import (
 	"bytes"
+	"context"
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/subtle"
@@ -121,33 +124,42 @@ type Auth struct {
 
 	mu       sync.Mutex
 	sessions map[[sha256.Size]byte]session // cookie hash -> session
-	// failed counts wrong tokens since failedSince.
+	// failed counts wrong tokens and passkeys since failedSince.
 	failed      int
 	failedSince time.Time
+
+	// passkeys is nil until EnablePasskeys.
+	passkeys        *passkeys
+	allowTokenLogin bool
+	ceremonies      map[[sha256.Size]byte]ceremony // ceremony ID hash -> ceremony
 }
 
 // session is one sign-in. Only hashes of its secrets are kept.
 type session struct {
 	keyHash [sha256.Size]byte
 	expiry  time.Time
+	// passkeyID is the passkey that signed in, or 0 for the token.
+	passkeyID int64
+	// verifiedAt is the time of the last passkey check, for RequireFresh.
+	verifiedAt time.Time
 }
 
-// New returns an Auth that accepts token.
+// New returns an Auth that accepts token. Call EnablePasskeys to add
+// passkey sign-in.
 func New(token string) *Auth {
 	return &Auth{
-		tokenHash: sha256.Sum256([]byte(token)),
-		now:       time.Now,
-		sessions:  make(map[[sha256.Size]byte]session),
+		tokenHash:  sha256.Sum256([]byte(token)),
+		now:        time.Now,
+		sessions:   make(map[[sha256.Size]byte]session),
+		ceremonies: make(map[[sha256.Size]byte]ceremony),
 	}
 }
 
 // Login handles POST {"token": "..."}. On a match it sets the session cookie
 // and replies 200 with {"key": "..."}, the session key. It replies 401 on a
-// wrong token.
+// wrong token, and 403 when token sign-in is off because a passkey exists.
 func (a *Auth) Login(w http.ResponseWriter, r *http.Request) {
-	if wait := a.loginWait(); wait > 0 {
-		w.Header().Set("Retry-After", strconv.Itoa(int(wait.Round(time.Second)/time.Second)))
-		http.Error(w, "too many wrong tokens, try again later", http.StatusTooManyRequests)
+	if a.limited(w) {
 		return
 	}
 	var body struct {
@@ -158,31 +170,68 @@ func (a *Auth) Login(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "bad request body", http.StatusBadRequest)
 		return
 	}
+	// Refuse before looking at the token, so a closed sign-in never tells
+	// anyone whether a token is right.
+	hasKeys, err := a.hasPasskeys(r.Context())
+	if err != nil {
+		serverError(w, err)
+		return
+	}
+	if !a.tokenLoginOpen(hasKeys) {
+		http.Error(w, "token sign-in is off because a passkey is registered. "+
+			"Sign in with your passkey, or run tess serve --allow-token-login", http.StatusForbidden)
+		return
+	}
 	// Compare hashes so the comparison takes the same time for any input length.
 	got := sha256.Sum256([]byte(body.Token))
 	if subtle.ConstantTimeCompare(got[:], a.tokenHash[:]) != 1 {
-		a.mu.Lock()
-		a.failed++
-		a.mu.Unlock()
+		a.countFailure()
 		http.Error(w, "wrong token", http.StatusUnauthorized)
 		return
 	}
+	a.startSession(w, r, 0)
+}
 
+// startSession makes a new session, sets its cookie and replies with its
+// key. passkeyID is the passkey that signed in, or 0 for the token. A
+// passkey sign-in counts as a fresh passkey check.
+func (a *Auth) startSession(w http.ResponseWriter, r *http.Request, passkeyID int64) {
 	cookie, key := newSecret(), newSecret()
 	a.mu.Lock()
 	a.dropExpiredLocked()
-	a.sessions[sha256.Sum256([]byte(cookie))] = session{
-		keyHash: sha256.Sum256([]byte(key)),
-		expiry:  a.now().Add(SessionTTL),
+	s := session{
+		keyHash:   sha256.Sum256([]byte(key)),
+		expiry:    a.now().Add(SessionTTL),
+		passkeyID: passkeyID,
 	}
+	if passkeyID != 0 {
+		s.verifiedAt = a.now()
+	}
+	a.sessions[sha256.Sum256([]byte(cookie))] = s
 	a.mu.Unlock()
 
 	http.SetCookie(w, sessionCookie(r, cookie, int(SessionTTL/time.Second)))
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Cache-Control", "no-store")
-	_ = json.NewEncoder(w).Encode(struct {
+	writeJSON(w, http.StatusOK, struct {
 		Key string `json:"key"`
 	}{key})
+}
+
+// limited replies 429 and returns true while sign-in is closed after too
+// many failures.
+func (a *Auth) limited(w http.ResponseWriter) bool {
+	wait := a.loginWait()
+	if wait <= 0 {
+		return false
+	}
+	w.Header().Set("Retry-After", strconv.Itoa(int(wait.Round(time.Second)/time.Second)))
+	http.Error(w, "too many failed sign-ins, try again later", http.StatusTooManyRequests)
+	return true
+}
+
+func (a *Auth) countFailure() {
+	a.mu.Lock()
+	a.failed++
+	a.mu.Unlock()
 }
 
 // loginWait returns how long sign-in stays closed after too many wrong
@@ -233,12 +282,22 @@ func sessionCookie(r *http.Request, value string, maxAge int) *http.Cookie {
 // Other requests get 401.
 func (a *Auth) Require(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if _, ok := a.lookup(r); !ok {
+		id, ok := a.lookup(r)
+		if !ok {
 			http.Error(w, "sign in required", http.StatusUnauthorized)
 			return
 		}
-		next.ServeHTTP(w, r)
+		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), sessionKey{}, id)))
 	})
+}
+
+type sessionKey struct{}
+
+// sessionID returns the id of the session Require let through, or the zero
+// id outside Require.
+func sessionID(r *http.Request) [sha256.Size]byte {
+	id, _ := r.Context().Value(sessionKey{}).([sha256.Size]byte)
+	return id
 }
 
 // lookup returns the id of the live session whose cookie and key r carries.

@@ -4,7 +4,7 @@ Tessaly runs coding agents side by side on your own machine. It is one Go binary
 
 These pages are published from [`docs/wiki/`](https://github.com/tessaly-dev/tessaly/tree/main/docs/wiki) in the main repo. To change a page, open a pull request there.
 
-- [Sign in](Sign-in): the login token and how sign-in works
+- [Sign in](Sign-in): passkeys, the login token and how sign-in works
 - [Your work](Your-work): the home view, sorted by what needs you
 - [Repositories](Repositories): add and remove the repos Tessaly works on
 - [Workspaces](Workspaces): a branch and worktree for each task

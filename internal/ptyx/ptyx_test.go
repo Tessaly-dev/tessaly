@@ -140,12 +140,17 @@ func TestStopEndsProgramAndChildren(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, updates, cancel := p.Subscribe()
+	// "started" may already be in the snapshot when Subscribe runs, so
+	// look there first, or the loop would wait for the sleep to end.
+	snapshot, updates, cancel := p.Subscribe()
 	defer cancel()
-	for b := range updates {
-		if bytes.Contains(b, []byte("started")) {
-			break
+	seen := bytes.Contains(snapshot, []byte("started"))
+	for !seen {
+		b, ok := <-updates
+		if !ok {
+			t.Fatal("program exited before it started")
 		}
+		seen = bytes.Contains(b, []byte("started"))
 	}
 
 	stopped := make(chan struct{})

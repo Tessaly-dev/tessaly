@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { App } from "./App";
 import type { AuthApi } from "./api";
 import type { ReposApi } from "./repos";
 import type { WorkspacesApi } from "./workspaces";
+import type { LoginOptions, PasskeyApi } from "./passkey";
 
 afterEach(cleanup);
 
@@ -86,6 +87,52 @@ describe("App", () => {
     render(<App repos={noRepos} workspaces={noWorkspaces} load={healthy} auth={fakeAuth(true)} />);
     fireEvent.click(await screen.findByRole("button", { name: "Sign out" }));
     expect(await screen.findByLabelText("Token")).toBeTruthy();
+  });
+});
+
+function fakePasskeys(options: LoginOptions): PasskeyApi & { calls: string[] } {
+  const calls: string[] = [];
+  return {
+    calls,
+    loginOptions: async () => options,
+    signIn: async () => {
+      calls.push("signIn");
+    },
+    list: async () => ({ passkeys: [], fresh: false, origin: options.passkeyOrigin }),
+    add: async () => undefined,
+    verify: async () => undefined,
+    remove: async () => undefined,
+  };
+}
+
+describe("App passkey sign-in", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("signs in with a passkey when token sign-in is off", async () => {
+    vi.stubGlobal("PublicKeyCredential", function PublicKeyCredential() {});
+    const passkeys = fakePasskeys({ token: false, passkey: true, passkeyOrigin: window.location.origin });
+    render(<App repos={noRepos} workspaces={noWorkspaces} load={healthy} auth={fakeAuth(false)} passkeys={passkeys} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Sign in with a passkey" }));
+    expect(await screen.findByRole("button", { name: "Sign out" })).toBeTruthy();
+    expect(passkeys.calls).toEqual(["signIn"]);
+    expect(screen.queryByLabelText("Token")).toBeNull();
+  });
+
+  it("links to the passkey address from another address", async () => {
+    vi.stubGlobal("PublicKeyCredential", function PublicKeyCredential() {});
+    const passkeys = fakePasskeys({ token: false, passkey: true, passkeyOrigin: "http://localhost:7777" });
+    render(<App repos={noRepos} workspaces={noWorkspaces} load={healthy} auth={fakeAuth(false)} passkeys={passkeys} />);
+    expect(await screen.findByRole("link", { name: "http://localhost:7777" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Sign in with a passkey" })).toBeNull();
+    expect(screen.getByText(/Token sign-in is off/)).toBeTruthy();
+  });
+
+  it("offers both while token sign-in stays on", async () => {
+    vi.stubGlobal("PublicKeyCredential", function PublicKeyCredential() {});
+    const passkeys = fakePasskeys({ token: true, passkey: true, passkeyOrigin: window.location.origin });
+    render(<App repos={noRepos} workspaces={noWorkspaces} load={healthy} auth={fakeAuth(false)} passkeys={passkeys} />);
+    expect(await screen.findByRole("button", { name: "Sign in with a passkey" })).toBeTruthy();
+    expect(screen.getByLabelText("Token")).toBeTruthy();
   });
 });
 

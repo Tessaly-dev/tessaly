@@ -3,6 +3,7 @@
 package store
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"os"
@@ -169,5 +170,55 @@ func TestSetWorkspacePR(t *testing.T) {
 	}
 	if err := s.SetWorkspacePR(ctx, 999, url); !errors.Is(err, ErrNotFound) {
 		t.Errorf("missing workspace: err = %v, want ErrNotFound", err)
+	}
+}
+
+func TestPasskeys(t *testing.T) {
+	s, _ := openTest(t)
+	ctx := context.Background()
+
+	if has, err := s.HasPasskeys(ctx); err != nil || has {
+		t.Fatalf("HasPasskeys on empty = %v, %v", has, err)
+	}
+	p, err := s.AddPasskey(ctx, []byte{1, 2}, "Laptop", []byte(`{"id":"AQI"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.AddPasskey(ctx, []byte{1, 2}, "Again", []byte(`{}`)); !errors.Is(err, ErrExists) {
+		t.Errorf("same credential twice = %v, want ErrExists", err)
+	}
+	if err := s.UsePasskey(ctx, p.ID, []byte(`{"id":"AQI","n":1}`)); err != nil {
+		t.Fatal(err)
+	}
+	keys, err := s.Passkeys(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(keys) != 1 || keys[0].Name != "Laptop" || string(keys[0].Data) != `{"id":"AQI","n":1}` || keys[0].LastUsedAt.IsZero() {
+		t.Errorf("Passkeys = %+v", keys)
+	}
+	if has, _ := s.HasPasskeys(ctx); !has {
+		t.Error("HasPasskeys = false after adding one")
+	}
+	if err := s.DeletePasskey(ctx, p.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.DeletePasskey(ctx, p.ID); !errors.Is(err, ErrNotFound) {
+		t.Errorf("second delete = %v, want ErrNotFound", err)
+	}
+	if err := s.UsePasskey(ctx, p.ID, nil); !errors.Is(err, ErrNotFound) {
+		t.Errorf("use deleted = %v, want ErrNotFound", err)
+	}
+}
+
+func TestWebAuthnUserIDIsStable(t *testing.T) {
+	s, _ := openTest(t)
+	first, err := s.WebAuthnUserID(context.Background())
+	if err != nil || len(first) != 32 {
+		t.Fatalf("WebAuthnUserID = %x, %v", first, err)
+	}
+	second, err := s.WebAuthnUserID(context.Background())
+	if err != nil || !bytes.Equal(first, second) {
+		t.Errorf("second call = %x, %v, want %x", second, err, first)
 	}
 }
