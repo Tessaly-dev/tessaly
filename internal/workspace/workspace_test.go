@@ -259,8 +259,8 @@ func TestRecover(t *testing.T) {
 		t.Errorf("stuck = %+v, want failed with a reason", got)
 	}
 	got, _ = m.store.Workspace(ctx, running.ID)
-	if got.State != string(Exited) || got.Error == "" {
-		t.Errorf("was-running = %+v, want exited with a reason", got)
+	if got.State != string(Exited) || got.Error == "" || got.Ended != EndInterrupted {
+		t.Errorf("was-running = %+v, want exited, interrupted, with a reason", got)
 	}
 	got, _ = m.store.Workspace(ctx, ready.ID)
 	if got.State != string(Ready) {
@@ -312,8 +312,8 @@ func TestStartRunsAgentInWorktree(t *testing.T) {
 	}
 
 	ws = waitExited(t, m, ws.ID)
-	if ws.State != string(Exited) || ws.ExitCode == nil || *ws.ExitCode != 7 {
-		t.Fatalf("ws = %+v, want exited with code 7", ws)
+	if ws.State != string(Exited) || ws.ExitCode == nil || *ws.ExitCode != 7 || ws.Ended != EndExited {
+		t.Fatalf("ws = %+v, want exited on its own with code 7", ws)
 	}
 
 	transcript, err := os.ReadFile(m.TranscriptPath(ws.ID))
@@ -380,19 +380,41 @@ func TestStopAndStopAll(t *testing.T) {
 	if err := m.Stop(context.Background(), a.ID); err != nil {
 		t.Fatal(err)
 	}
-	if got := waitExited(t, m, a.ID); got.State != string(Exited) {
-		t.Errorf("a = %s, want exited", got.State)
+	if got := waitExited(t, m, a.ID); got.State != string(Exited) || got.Ended != EndStopped {
+		t.Errorf("a = %+v, want exited and stopped", got)
 	}
 	if err := m.Stop(context.Background(), a.ID); !errors.Is(err, ErrNotRunning) {
 		t.Errorf("stop twice: err = %v, want ErrNotRunning", err)
 	}
 
 	m.StopAll(context.Background())
-	if got := waitExited(t, m, b.ID); got.State != string(Exited) {
-		t.Errorf("b = %s, want exited", got.State)
+	if got := waitExited(t, m, b.ID); got.State != string(Exited) || got.Ended != EndInterrupted {
+		t.Errorf("b = %+v, want exited and interrupted", got)
 	}
 	if m.Process(b.ID) != nil {
 		t.Error("process still tracked after StopAll")
+	}
+}
+
+func TestWaiting(t *testing.T) {
+	m, repo := setup(t)
+	m.IdleAfter = 200 * time.Millisecond
+	quiet := startAgent(t, m, repo, "quiet", "sleep", "60")
+	busy := startAgent(t, m, repo, "busy", "sh", "-c", "while :; do echo working; sleep 0.05; done")
+	defer m.StopAll(context.Background())
+
+	if m.Waiting(quiet.ID) {
+		t.Error("a just-started agent counts as waiting")
+	}
+	time.Sleep(400 * time.Millisecond) // Lets IdleAfter pass for the real process.
+	if !m.Waiting(quiet.ID) {
+		t.Error("a quiet agent does not count as waiting")
+	}
+	if m.Waiting(busy.ID) {
+		t.Error("an agent that keeps printing counts as waiting")
+	}
+	if m.Waiting(0) {
+		t.Error("a workspace with no agent counts as waiting")
 	}
 }
 

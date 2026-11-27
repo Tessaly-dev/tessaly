@@ -44,6 +44,8 @@ type Process struct {
 	out      *ring
 	subs     map[chan []byte]struct{}
 	exitCode int
+	// lastOutput is when the program last wrote to its terminal.
+	lastOutput time.Time
 }
 
 // Start runs argv in dir with env under a new pseudo-terminal. The program
@@ -79,6 +81,7 @@ func Start(argv []string, dir string, env []string, transcript io.Writer) (*Proc
 		done:       make(chan struct{}),
 		out:        newRing(BufferSize),
 		subs:       make(map[chan []byte]struct{}),
+		lastOutput: time.Now(),
 	}
 	go p.run()
 	return p, nil
@@ -160,6 +163,7 @@ func (p *Process) drain(read, copied <-chan struct{}) {
 func (p *Process) publish(b []byte) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	p.lastOutput = time.Now()
 	p.out.Write(b)
 	if p.transcript != nil {
 		_, _ = p.transcript.Write(b)
@@ -206,6 +210,14 @@ func (p *Process) Output() []byte {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	return p.out.Bytes()
+}
+
+// LastOutput returns when the program last wrote output, or when it
+// started if it has written nothing.
+func (p *Process) LastOutput() time.Time {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.lastOutput
 }
 
 // Write sends input to the program as if typed.

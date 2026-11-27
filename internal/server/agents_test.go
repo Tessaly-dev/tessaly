@@ -156,3 +156,23 @@ func TestAgentRunAPIWithPromptFile(t *testing.T) {
 		t.Errorf("output = %q, want the prompt read from the file", rec.Body.String())
 	}
 }
+
+func TestWorkspaceListShowsWaiting(t *testing.T) {
+	cfg := testConfig(t, testPort, testUI)
+	cfg.Workspaces.IdleAfter = 0
+	h := Handler(cfg)
+	c := signIn(t, h)
+	ws := newWorkspace(t, h, c, "waits")
+	if rec := send(t, h, http.MethodPost, wsPath(ws, "start"), startBody("sleep", ""), c, nil); rec.Code != http.StatusOK {
+		t.Fatalf("start = %d: %s", rec.Code, rec.Body)
+	}
+	defer send(t, h, http.MethodPost, wsPath(ws, "stop"), "", c, nil)
+
+	var list []workspaceView
+	if err := json.NewDecoder(send(t, h, http.MethodGet, "/api/v1/workspaces", "", c, nil).Body).Decode(&list); err != nil {
+		t.Fatal(err)
+	}
+	if len(list) != 1 || !list[0].Waiting || list[0].State != "running" {
+		t.Errorf("list = %+v, want one running workspace that waits", list)
+	}
+}

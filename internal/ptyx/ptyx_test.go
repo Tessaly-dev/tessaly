@@ -178,3 +178,23 @@ func TestShortProgramKeepsAllOutput(t *testing.T) {
 		}
 	}
 }
+
+func TestLastOutput(t *testing.T) {
+	before := time.Now()
+	p, err := Start([]string{"sh", "-c", "sleep 0.2; echo hi; exec sleep 60"}, t.TempDir(), nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer p.Stop(context.Background(), 0)
+	started := p.LastOutput()
+	if started.Before(before) {
+		t.Errorf("LastOutput = %v before start %v", started, before)
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for !p.LastOutput().After(started.Add(100 * time.Millisecond)) {
+		if time.Now().After(deadline) {
+			t.Fatal("LastOutput did not move when the program wrote")
+		}
+		time.Sleep(10 * time.Millisecond) // Polls a real process; there is no event to wait on.
+	}
+}

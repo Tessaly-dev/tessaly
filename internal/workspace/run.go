@@ -33,6 +33,12 @@ const MaxRunning = 16
 // keeps working either way.
 const MaxTranscript = 64 << 20
 
+// DefaultIdleAfter is how long a running agent must stay silent before Tessaly
+// counts it as waiting for you. Agents print while they work, so a quiet
+// terminal usually means a prompt that wants an answer. It is a guess: the
+// generic adapter cannot read the agent's output.
+const DefaultIdleAfter = 5 * time.Second
+
 // ErrNotRunning means no agent runs in the workspace.
 var ErrNotRunning = errors.New("no agent is running in this workspace")
 
@@ -83,7 +89,7 @@ func (m *Manager) Start(ctx context.Context, ws store.Workspace, agentName strin
 		_ = transcript.Close()
 		return ws, err
 	}
-	if err := m.store.SetWorkspaceRun(ctx, ws.ID, agentName, nil); err != nil {
+	if err := m.store.SetWorkspaceRun(ctx, ws.ID, agentName, nil, ""); err != nil {
 		proc.Stop(ctx, 0)
 		_ = transcript.Close()
 		return ws, err
@@ -94,10 +100,10 @@ func (m *Manager) Start(ctx context.Context, ws store.Workspace, agentName strin
 		_ = transcript.Close()
 		return ws, err
 	}
-	ws.Agent, ws.ExitCode = agentName, nil
+	ws.Agent, ws.ExitCode, ws.Ended = agentName, nil, ""
 
 	started = true
-	r := &run{proc: proc, recorded: make(chan struct{})}
+	r := &run{proc: proc, recorded: make(chan struct{}), end: EndExited}
 	m.runs[ws.ID] = r
 	// The agent outlives this request, so watch must not use its context.
 	go m.watch(ws, r, transcript) // #nosec G118 -- see above.
@@ -108,6 +114,9 @@ func (m *Manager) Start(ctx context.Context, ws store.Workspace, agentName strin
 type run struct {
 	proc     *ptyx.Process
 	recorded chan struct{}
+	// end is how the run ends, unless the agent exits first. Stop and
+	// StopAll set it. Guarded by Manager.runMu.
+	end string
 }
 
 // watch waits for the agent to exit, then records how it ended.
@@ -124,7 +133,7 @@ func (m *Manager) watch(ws store.Workspace, r *run, transcript *cappedFile) {
 	delete(m.runs, ws.ID)
 	// Use a fresh context: the request that started the agent is long gone.
 	ctx := context.Background()
-	if err := m.store.SetWorkspaceRun(ctx, ws.ID, ws.Agent, &code); err != nil {
+	if err := m.store.SetWorkspaceRun(ctx, ws.ID, ws.Agent, &code, r.end); err != nil {
 		slog.Error("record agent exit", "workspace", ws.ID, "err", err)
 	}
 	ws.State = string(Running)
@@ -138,6 +147,9 @@ func (m *Manager) watch(ws store.Workspace, r *run, transcript *cappedFile) {
 func (m *Manager) Stop(ctx context.Context, id int64) error {
 	m.runMu.Lock()
 	r := m.runs[id]
+	if r != nil {
+		r.end = EndStopped
+	}
 	m.runMu.Unlock()
 	if r == nil {
 		return ErrNotRunning
@@ -147,10 +159,12 @@ func (m *Manager) Stop(ctx context.Context, id int64) error {
 }
 
 // StopAll ends every running agent and waits for them. Call it on shutdown.
+// Their runs count as interrupted.
 func (m *Manager) StopAll(ctx context.Context) {
 	m.runMu.Lock()
 	runs := make([]*run, 0, len(m.runs))
 	for _, r := range m.runs {
+		r.end = EndInterrupted
 		runs = append(runs, r)
 	}
 	m.runMu.Unlock()
@@ -179,6 +193,13 @@ func (m *Manager) Process(id int64) *ptyx.Process {
 		return r.proc
 	}
 	return nil
+}
+
+// Waiting reports whether workspace id has a running agent that has printed
+// nothing for m.IdleAfter, so it is probably waiting for input.
+func (m *Manager) Waiting(id int64) bool {
+	proc := m.Process(id)
+	return proc != nil && time.Since(proc.LastOutput()) >= m.IdleAfter
 }
 
 // TranscriptPath returns where the transcript of workspace id is kept.

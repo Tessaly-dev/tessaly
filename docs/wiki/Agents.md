@@ -1,6 +1,6 @@
 # Agents
 
-Tessaly runs agent CLIs in workspaces. Today it has one adapter, the generic adapter: it runs any command you list in the config file, under a terminal, in the workspace's worktree. It does not read the agent's output, so status is only running or exited with a code.
+Tessaly runs agent CLIs in workspaces. Today it has one adapter, the generic adapter: it runs any command you list in the config file, under a terminal, in the workspace's worktree. It does not read the agent's output, so it knows only whether the agent runs, whether it has been quiet for a while, and how it ended.
 
 ## Set up an agent
 
@@ -40,6 +40,22 @@ The panel shows the agent's terminal live. Click into it to type: keystrokes go 
 Press Stop agent to end it. Tessaly sends SIGTERM to the agent and every process it started, and SIGKILL after 10 seconds. When the agent exits, the workspace shows `exited` and the exit code. You can start an agent again in an exited workspace.
 
 Stopping `tess serve` stops every agent. A workspace that was running when Tessaly crashed shows `exited` on the next start.
+
+### How a run ended
+
+Each workspace keeps how its last run ended, in the `ended` field:
+
+| `ended` | Meaning |
+| --- | --- |
+| `exited` | The agent exited on its own. `exitCode` says how |
+| `stopped` | You pressed Stop agent |
+| `interrupted` | `tess serve` stopped or crashed while the agent ran |
+
+The field is empty while an agent runs and before the first run.
+
+### Waiting for you
+
+A running agent that has printed nothing for 5 seconds shows `"waiting": true` in the workspace list. Agents print while they work, so a quiet terminal usually means a question or a prompt for you. This is a guess, because the generic adapter cannot read the output: an agent that works without printing for 5 seconds also counts as waiting.
 
 ## API
 

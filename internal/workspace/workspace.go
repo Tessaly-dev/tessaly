@@ -14,6 +14,7 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/tessaly-dev/tessaly/internal/gitx"
 	"github.com/tessaly-dev/tessaly/internal/store"
@@ -50,6 +51,9 @@ type Manager struct {
 	maxRuns int
 	// maxTranscript caps the size of one transcript file.
 	maxTranscript int64
+	// IdleAfter is how long a running agent stays quiet before it counts
+	// as waiting. NewManager sets it to DefaultIdleAfter.
+	IdleAfter time.Duration
 }
 
 // NewManager returns a Manager that keeps worktrees and transcripts in the
@@ -63,6 +67,7 @@ func NewManager(s *store.Store, home string) *Manager {
 
 		maxRuns:       MaxRunning,
 		maxTranscript: MaxTranscript,
+		IdleAfter:     DefaultIdleAfter,
 	}
 }
 
@@ -145,8 +150,8 @@ func (m *Manager) Archive(ctx context.Context, repo store.Repo, ws store.Workspa
 }
 
 // Recover fixes workspaces that tess left behind when it stopped: Creating
-// becomes Failed and Running becomes Exited. Call it once at startup, before
-// serving requests.
+// becomes Failed, and Running becomes Exited with an interrupted run. Call
+// it once at startup, before serving requests.
 func (m *Manager) Recover(ctx context.Context) error {
 	list, err := m.store.Workspaces(ctx)
 	if err != nil {
@@ -158,7 +163,10 @@ func (m *Manager) Recover(ctx context.Context) error {
 		case Creating:
 			_, err = m.move(ctx, ws, Failed, "tess stopped while creating this workspace")
 		case Running:
-			_, err = m.move(ctx, ws, Exited, "tess stopped while the agent was running")
+			err = m.store.SetWorkspaceRun(ctx, ws.ID, ws.Agent, nil, EndInterrupted)
+			if err == nil {
+				_, err = m.move(ctx, ws, Exited, "tess stopped while the agent was running")
+			}
 		}
 		if err != nil {
 			return err
