@@ -6,8 +6,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/tessaly-dev/tessaly/internal/store"
@@ -107,5 +110,51 @@ func TestWorkspacesAPIRejectsBadInput(t *testing.T) {
 				t.Errorf("status = %d, want %d: %s", rec.Code, tt.want, rec.Body)
 			}
 		})
+	}
+}
+
+func TestWorkspaceDiffAPI(t *testing.T) {
+	h := testHandler(t, testUI)
+	c := signIn(t, h)
+	repo := addRepoWithCommit(t, h, c)
+	rec := send(t, h, http.MethodPost, "/api/v1/workspaces", wsBody(repo.ID, "fix-login"), c, nil)
+	var ws store.Workspace
+	if err := json.NewDecoder(rec.Body).Decode(&ws); err != nil {
+		t.Fatal(err)
+	}
+	diffURL := "/api/v1/workspaces/" + strconv.FormatInt(ws.ID, 10) + "/diff"
+
+	type diff struct {
+		Patch     string `json:"patch"`
+		Truncated bool   `json:"truncated"`
+	}
+	get := func() diff {
+		t.Helper()
+		rec := send(t, h, http.MethodGet, diffURL, "", c, nil)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("diff = %d: %s", rec.Code, rec.Body)
+		}
+		var d diff
+		if err := json.NewDecoder(rec.Body).Decode(&d); err != nil {
+			t.Fatal(err)
+		}
+		return d
+	}
+
+	if d := get(); d.Patch != "" || d.Truncated {
+		t.Errorf("fresh workspace diff = %+v, want empty", d)
+	}
+	if err := os.WriteFile(filepath.Join(ws.Path, "login.go"), []byte("package login\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if d := get(); !strings.Contains(d.Patch, "+package login") {
+		t.Errorf("diff = %q, want the new file", d.Patch)
+	}
+
+	if rec := send(t, h, http.MethodGet, diffURL, "", nil, nil); rec.Code != http.StatusUnauthorized {
+		t.Errorf("signed-out diff = %d, want 401", rec.Code)
+	}
+	if rec := send(t, h, http.MethodGet, "/api/v1/workspaces/999/diff", "", c, nil); rec.Code != http.StatusNotFound {
+		t.Errorf("missing diff = %d, want 404", rec.Code)
 	}
 }

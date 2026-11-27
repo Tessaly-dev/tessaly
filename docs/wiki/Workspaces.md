@@ -26,6 +26,12 @@ The repo needs at least one commit.
 
 Only these moves are allowed: `creating` to `ready` or `failed`, `ready` to `running`, `archived` or `failed`, `running` to `exited`, `exited` to `running` or `archived`, and `failed` to `archived`. The table lives in `internal/workspace/state.go`.
 
+## Review changes
+
+Open a workspace on the Home tab and press Review changes. Tessaly shows everything the workspace changed since the commit it was created from: commits on its branch, staged and unstaged edits, and new files that git does not ignore. Each file gets its own section with its added and removed lines. Press Refresh changes to load the diff again while an agent works.
+
+The diff loads only when you ask, and stops at 1 MiB or 500 new files. The panel says so when it is cut. Tessaly runs `git diff` with `--no-ext-diff` and `--no-textconv`, so diff programs set in the repo's config never run.
+
 ## Archive a workspace
 
 Press Archive. Tessaly runs `git worktree remove` without `--force`. If the worktree has uncommitted or untracked files, it refuses, so you do not lose work. Commit or delete those files first. The branch is kept.
@@ -40,4 +46,5 @@ All routes need a signed-in session.
 | --- | --- | --- |
 | `GET /api/v1/workspaces` | none | `200` with the list, newest first. Each running workspace also has `waiting`, see [Agents](Agents#waiting-for-you) |
 | `POST /api/v1/workspaces` | `{"repoId": 1, "name": "fix-login"}` | `201` with the workspace. `400` for a bad name or unknown repo, `409` if the branch or name exists |
+| `GET /api/v1/workspaces/{id}/diff` | none | `200` with `{"patch": "<unified diff>", "truncated": false}`. `409` if the workspace has no worktree |
 | `POST /api/v1/workspaces/{id}/archive` | none | `200` with the workspace. `409` if it has changes, an agent runs, or it is already archived |

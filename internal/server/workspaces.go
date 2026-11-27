@@ -95,6 +95,31 @@ func (h workspaceHandlers) archive(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// maxDiff caps the diff the API returns. The UI shows that it was cut.
+const maxDiff = 1 << 20
+
+// diff returns the workspace's changes since its base commit.
+func (h workspaceHandlers) diff(w http.ResponseWriter, r *http.Request) {
+	ws, ok := h.find(w, r)
+	if !ok {
+		return
+	}
+	switch workspace.State(ws.State) {
+	case workspace.Creating, workspace.Failed, workspace.Archived:
+		writeError(w, http.StatusConflict, "this workspace has no worktree to compare")
+		return
+	}
+	patch, truncated, err := gitx.Diff(r.Context(), ws.Path, ws.Base, maxDiff)
+	if err != nil {
+		serverError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, struct {
+		Patch     string `json:"patch"`
+		Truncated bool   `json:"truncated"`
+	}{patch, truncated})
+}
+
 // find loads the workspace named by the {id} path value, or replies 404.
 func (h workspaceHandlers) find(w http.ResponseWriter, r *http.Request) (store.Workspace, bool) {
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)

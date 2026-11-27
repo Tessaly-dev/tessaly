@@ -16,7 +16,7 @@ Archived workspaces do not show. Empty groups are hidden. The list reloads every
 
 ## Open a workspace
 
-Click a workspace to open it beside the list. You see its repo, branch and state, and its agent panel: start or stop the agent, and type into its live terminal. On a phone the panel shows below the list.
+Click a workspace to open it beside the list. You see its repo, branch and state, and its agent panel: start or stop the agent, and type into its live terminal. Press Review changes to see its diff, see [Workspaces](Workspaces#review-changes). On a phone the panel shows below the list.
 
 Press New workspace under the list to create one. See [Workspaces](Workspaces).
 
