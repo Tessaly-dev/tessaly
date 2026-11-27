@@ -41,6 +41,14 @@ type opts struct {
 // runOpts runs git like run, with o applied. Git always runs in a new
 // session without a controlling terminal, so ssh or a credential helper
 // fails at once instead of asking for a password in tess serve's terminal.
+// noHooks puts a setting in front of args that keeps git hooks from
+// running. An agent can write hooks into the repo, and Tessaly's own git
+// calls, such as the commit and push behind a pull request, would then run
+// that code as you, outside the agent's terminal.
+func noHooks(args []string) []string {
+	return append([]string{"-c", "core.hooksPath=" + os.DevNull}, args...)
+}
+
 func runOpts(ctx context.Context, dir string, o opts, args ...string) (string, error) {
 	limit := timeout
 	if o.timeout > 0 {
@@ -49,7 +57,7 @@ func runOpts(ctx context.Context, dir string, o opts, args ...string) (string, e
 	ctx, cancel := context.WithTimeout(ctx, limit)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, "git", args...) // #nosec G204 -- fixed argv, no shell.
+	cmd := exec.CommandContext(ctx, "git", noHooks(args)...) // #nosec G204 -- fixed argv, no shell.
 	cmd.Dir = dir
 	cmd.Env = append(env(os.Environ()),
 		"GIT_TERMINAL_PROMPT=0", // Never wait for a password on a terminal.
@@ -129,7 +137,7 @@ func BranchExists(ctx context.Context, repo, branch string) (bool, error) {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	// show-ref exits 1 when the ref is missing and 128 or more on real errors.
-	cmd := exec.CommandContext(ctx, "git", "show-ref", "--verify", "--quiet", "refs/heads/"+branch) // #nosec G204 -- fixed argv, no shell.
+	cmd := exec.CommandContext(ctx, "git", noHooks([]string{"show-ref", "--verify", "--quiet", "refs/heads/" + branch})...) // #nosec G204 -- fixed argv, no shell.
 	cmd.Dir = repo
 	cmd.Env = append(env(os.Environ()), "GIT_TERMINAL_PROMPT=0")
 	err := cmd.Run()

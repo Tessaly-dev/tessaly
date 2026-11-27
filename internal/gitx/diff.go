@@ -65,7 +65,7 @@ func Diff(ctx context.Context, dir, base string, limit int) (patch string, trunc
 func diffTo(ctx context.Context, dir string, out *capped, args ...string) error {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "git", args...) // #nosec G204 -- fixed argv, no shell.
+	cmd := exec.CommandContext(ctx, "git", noHooks(args)...) // #nosec G204 -- fixed argv, no shell.
 	cmd.Dir = dir
 	cmd.Env = append(env(os.Environ()), "GIT_TERMINAL_PROMPT=0", "GIT_OPTIONAL_LOCKS=0")
 	var stderr bytes.Buffer
