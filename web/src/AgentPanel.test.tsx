@@ -16,7 +16,6 @@ function fakeApi(over: Partial<WorkspacesApi> = {}): WorkspacesApi {
     agents: async () => [],
     start: vi.fn(async () => ({ ...ws, state: "running" })),
     stop: vi.fn(async () => ({ ...ws, state: "exited" })),
-    output: async () => "<b>not html</b>",
     ...over,
   };
 }
@@ -40,25 +39,35 @@ describe("AgentPanel", () => {
     expect(api.start).toHaveBeenCalledWith(1, "codex", "fix the login");
   });
 
-  it("shows output as text, never as HTML", async () => {
-    render(<AgentPanel ws={ws} agents={agents} api={fakeApi()} onChange={async () => undefined} />);
-    const out = await screen.findByLabelText("Agent output");
-    expect(out.textContent).toBe("<b>not html</b>");
-    expect(out.querySelector("b")).toBeNull();
+  it("shows the terminal for a run, keyed by state and agent", () => {
+    const seen: string[] = [];
+    const terminal = (p: { workspaceId: number; session: string }) => {
+      seen.push(`${p.workspaceId}:${p.session}`);
+      return <div>terminal</div>;
+    };
+    const { rerender } = render(
+      <AgentPanel ws={ws} agents={agents} api={fakeApi()} onChange={async () => undefined} terminal={terminal} />,
+    );
+    expect(screen.queryByText("terminal")).toBeNull();
+
+    rerender(
+      <AgentPanel
+        ws={{ ...ws, state: "running", agent: "aider" }}
+        agents={agents}
+        api={fakeApi()}
+        onChange={async () => undefined}
+        terminal={terminal}
+      />,
+    );
+    expect(screen.getByText("terminal")).toBeTruthy();
+    expect(seen.at(-1)).toBe("1:running-aider");
   });
 
   it("stops a running agent", async () => {
     const api = fakeApi();
-    render(<AgentPanel ws={{ ...ws, state: "running" }} agents={agents} api={api} onChange={async () => undefined} />);
+    render(<AgentPanel ws={{ ...ws, state: "running" }} agents={agents} api={api} onChange={async () => undefined} terminal={() => null} />);
     fireEvent.click(screen.getByRole("button", { name: "Stop agent" }));
     await vi.waitFor(() => expect(api.stop).toHaveBeenCalledWith(1));
-  });
-
-  it("polls output while running", async () => {
-    let n = 0;
-    const api = fakeApi({ output: async () => `line ${++n}` });
-    render(<AgentPanel ws={{ ...ws, state: "running" }} agents={agents} api={api} onChange={async () => undefined} pollMs={10} />);
-    await screen.findByText("line 3");
   });
 
   it("explains how to add an agent", () => {

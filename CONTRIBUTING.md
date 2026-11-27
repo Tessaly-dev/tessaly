@@ -30,7 +30,7 @@ make check      # lint, vet, type checks, tests and a build
 make dev        # builds the UI and runs the daemon on 127.0.0.1:7777
 ```
 
-For UI work, run `make dev` in one terminal and `pnpm dev` in `web/` in another. Vite serves the UI on `127.0.0.1:5173` and forwards `/healthz` and `/api` to the daemon.
+For UI work, run `make dev` in one terminal and `pnpm dev` in `web/` in another. Vite serves the UI on `127.0.0.1:5173` and forwards `/healthz` and `/api`, including the terminal WebSocket, to the daemon.
 
 macOS and Linux are supported, on amd64 and arm64 (including Raspberry Pi). CI runs the Go tests on Linux amd64, Linux arm64 and macOS, so you only need one of them locally. On Windows, clone and build inside WSL2, not on the Windows file system.
 

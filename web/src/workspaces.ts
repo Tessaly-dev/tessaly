@@ -24,7 +24,6 @@ export type WorkspacesApi = {
   agents(): Promise<Agent[]>;
   start(id: number, agent: string, prompt: string): Promise<Workspace>;
   stop(id: number): Promise<Workspace>;
-  output(id: number): Promise<string>;
 };
 
 export function workspacesApi(fetcher: typeof fetch = fetch): WorkspacesApi {
@@ -71,12 +70,6 @@ export function workspacesApi(fetcher: typeof fetch = fetch): WorkspacesApi {
       const res = await fetcher(`/api/v1/workspaces/${encodeURIComponent(String(id))}/stop`, { method: "POST" });
       if (!res.ok) throw await errorFrom(res, "stopping the agent");
       return (await res.json()) as Workspace;
-    },
-
-    async output(id: number) {
-      const res = await fetcher(`/api/v1/workspaces/${encodeURIComponent(String(id))}/output`);
-      if (!res.ok) throw await errorFrom(res, "reading output");
-      return res.text();
     },
   };
 }

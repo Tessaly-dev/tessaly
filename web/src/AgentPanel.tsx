@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
-import { useEffect, useState, type FormEvent } from "react";
+import { useState, type FormEvent, type ReactNode } from "react";
+import { Terminal } from "./Terminal";
 import type { Agent, Workspace, WorkspacesApi } from "./workspaces";
 
 type Props = {
@@ -7,34 +8,19 @@ type Props = {
   agents: Agent[];
   api: WorkspacesApi;
   onChange: () => Promise<void>;
-  // pollMs sets how often output refreshes while the agent runs.
-  pollMs?: number;
+  // terminal renders the live terminal. Tests pass a stand-in.
+  terminal?: (props: TerminalProps) => ReactNode;
 };
 
-// AgentPanel starts and stops a workspace's agent and shows its output.
-export function AgentPanel({ ws, agents, api, onChange, pollMs = 1000 }: Props) {
+type TerminalProps = { workspaceId: number; session: string; onClose: () => void };
+
+// AgentPanel starts and stops a workspace's agent and shows its terminal.
+export function AgentPanel({ ws, agents, api, onChange, terminal = (p) => <Terminal {...p} /> }: Props) {
   const [agent, setAgent] = useState("");
   const [prompt, setPrompt] = useState("");
-  const [output, setOutput] = useState("");
   const [error, setError] = useState<string | null>(null);
   const running = ws.state === "running";
   const chosen = agents.find((a) => a.name === agent) ?? agents[0];
-
-  useEffect(() => {
-    let active = true;
-    const load = () =>
-      api
-        .output(ws.id)
-        .then((text) => active && setOutput(text))
-        .catch(() => undefined);
-    void load();
-    if (!running) return () => void (active = false);
-    const timer = setInterval(load, pollMs);
-    return () => {
-      active = false;
-      clearInterval(timer);
-    };
-  }, [api, ws.id, running, pollMs]);
 
   async function run(action: () => Promise<unknown>) {
     setError(null);
@@ -82,11 +68,10 @@ export function AgentPanel({ ws, agents, api, onChange, pollMs = 1000 }: Props) 
       )}
       {ws.exitCode !== undefined && !running && <p className="hint">Last run exited with code {ws.exitCode}.</p>}
       {error && <p role="alert">{error}</p>}
-      {output && (
-        <pre className="output" aria-label="Agent output">
-          {output}
-        </pre>
-      )}
+      {(running || ws.agent) &&
+        // The session key changes when the agent starts or stops, so the
+        // terminal reconnects and shows the new run or the transcript.
+        terminal({ workspaceId: ws.id, session: `${ws.state}-${ws.agent ?? ""}`, onClose: () => void onChange() })}
     </div>
   );
 }

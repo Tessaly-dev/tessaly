@@ -17,7 +17,7 @@
 Tessaly runs coding agents side by side on your own machine. It is one Go binary with a browser UI, and it runs on your computer or your own server.
 
 > [!NOTE]
-> Tessaly is in early development. Today the binary serves a health check, token sign-in, and a placeholder UI where you add repositories, make a branch and worktree for each task, and run an agent CLI in it. This README and the docs grow as features land.
+> Tessaly is in early development. Today the binary serves a health check, token sign-in, and a placeholder UI where you add repositories, make a branch and worktree for each task, and run an agent CLI in it with a live terminal. This README and the docs grow as features land.
 
 ## Platforms
 
