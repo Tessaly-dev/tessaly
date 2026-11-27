@@ -19,6 +19,7 @@ import (
 	"github.com/tessaly-dev/tessaly/internal/auth"
 	"github.com/tessaly-dev/tessaly/internal/store"
 	"github.com/tessaly-dev/tessaly/internal/version"
+	"github.com/tessaly-dev/tessaly/internal/workspace"
 )
 
 const testPort = 7777
@@ -46,7 +47,13 @@ func testConfig(t *testing.T, port int, ui fstest.MapFS) Config {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = db.Close() })
-	return Config{Port: port, UI: ui, Auth: auth.New(testToken), Store: db}
+	return Config{
+		Port:       port,
+		UI:         ui,
+		Auth:       auth.New(testToken),
+		Store:      db,
+		Workspaces: workspace.NewManager(db, filepath.Join(t.TempDir(), "worktrees")),
+	}
 }
 
 func do(t *testing.T, h http.Handler, method, target, host string) *httptest.ResponseRecorder {

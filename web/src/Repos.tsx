@@ -4,18 +4,26 @@ import { reposApi, type Repo, type ReposApi } from "./repos";
 
 const defaultApi = reposApi();
 
-export function Repos({ api = defaultApi }: { api?: ReposApi }) {
+type Props = {
+  api?: ReposApi;
+  // onChange gets the list each time it loads, so other parts can use it.
+  onChange?: (repos: Repo[]) => void;
+};
+
+export function Repos({ api = defaultApi, onChange }: Props) {
   const [repos, setRepos] = useState<Repo[] | null>(null);
   const [path, setPath] = useState("");
   const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     try {
-      setRepos(await api.list());
+      const list = await api.list();
+      setRepos(list);
+      onChange?.(list);
     } catch (err: unknown) {
       setError(errorText(err));
     }
-  }, [api]);
+  }, [api, onChange]);
 
   useEffect(() => {
     void refresh();

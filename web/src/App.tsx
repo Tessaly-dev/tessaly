@@ -3,7 +3,9 @@ import { useEffect, useState } from "react";
 import { authApi, type AuthApi } from "./api";
 import { fetchHealth, type Health } from "./health";
 import { Repos } from "./Repos";
-import { reposApi, type ReposApi } from "./repos";
+import { reposApi, type Repo, type ReposApi } from "./repos";
+import { Workspaces } from "./Workspaces";
+import { workspacesApi, type WorkspacesApi } from "./workspaces";
 import { SignIn } from "./SignIn";
 
 type HealthState =
@@ -19,14 +21,19 @@ type Props = {
   // A token from the sign-in link, read once before the first render.
   initialToken?: string | null;
   repos?: ReposApi;
+  workspaces?: WorkspacesApi;
 };
 
 const defaultAuth = authApi();
 const defaultRepos = reposApi();
+const defaultWorkspaces = workspacesApi();
 
-export function App({ load = fetchHealth, auth = defaultAuth, initialToken = null, repos = defaultRepos }: Props) {
+export function App({ load = fetchHealth, auth = defaultAuth, initialToken = null, repos = defaultRepos,
+  workspaces = defaultWorkspaces,
+}: Props) {
   const [health, setHealth] = useState<HealthState>({ kind: "loading" });
   const [authState, setAuthState] = useState<AuthState>("checking");
+  const [repoList, setRepoList] = useState<Repo[]>([]);
 
   useEffect(() => {
     let active = true;
@@ -74,7 +81,8 @@ export function App({ load = fetchHealth, auth = defaultAuth, initialToken = nul
       {authState === "signedOut" && <SignIn onSignIn={signIn} />}
       {authState === "signedIn" && (
         <>
-          <Repos api={repos} />
+          <Repos api={repos} onChange={setRepoList} />
+          <Workspaces repos={repoList} api={workspaces} />
           <button type="button" onClick={() => signOut().catch(() => undefined)}>
             Sign out
           </button>

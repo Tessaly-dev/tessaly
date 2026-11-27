@@ -73,6 +73,10 @@ func (h repoHandlers) remove(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	err = h.store.RemoveRepo(r.Context(), id)
+	if errors.Is(err, store.ErrInUse) {
+		writeError(w, http.StatusConflict, "this repository still has workspaces")
+		return
+	}
 	if errors.Is(err, store.ErrNotFound) {
 		writeError(w, http.StatusNotFound, "no such repository")
 		return

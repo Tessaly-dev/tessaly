@@ -6,6 +6,7 @@ These pages are published from [`docs/wiki/`](https://github.com/tessaly-dev/tes
 
 - [Sign in](Sign-in): the login token and how sign-in works
 - [Repositories](Repositories): add and remove the repos Tessaly works on
+- [Workspaces](Workspaces): a branch and worktree for each task
 - [Dev setup](Dev-setup): build and test Tessaly locally
 - [Threat model](Threat-model): the security controls in the code today
 

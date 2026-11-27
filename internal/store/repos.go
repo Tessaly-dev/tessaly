@@ -80,10 +80,17 @@ func (s *Store) RepoNames(ctx context.Context) (map[string]bool, error) {
 	return names, nil
 }
 
-// RemoveRepo deletes the repo record. It never touches files on disk.
+// ErrInUse means other rows still point at the row.
+var ErrInUse = errors.New("still in use")
+
+// RemoveRepo deletes the repo record. It never touches files on disk. It
+// returns ErrInUse while the repo has workspaces.
 func (s *Store) RemoveRepo(ctx context.Context, id int64) error {
 	res, err := s.db.ExecContext(ctx, "DELETE FROM repos WHERE id = ?", id)
 	if err != nil {
+		if strings.Contains(err.Error(), "FOREIGN KEY constraint failed") {
+			return ErrInUse
+		}
 		return fmt.Errorf("remove repo: %w", err)
 	}
 	if n, err := res.RowsAffected(); err != nil {

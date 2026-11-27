@@ -21,6 +21,7 @@ import (
 	"github.com/tessaly-dev/tessaly/internal/auth"
 	"github.com/tessaly-dev/tessaly/internal/store"
 	"github.com/tessaly-dev/tessaly/internal/version"
+	"github.com/tessaly-dev/tessaly/internal/workspace"
 )
 
 // DefaultPort is the port "tess serve" uses when none is given.
@@ -48,6 +49,8 @@ type Config struct {
 	Auth *auth.Auth
 	// Store holds repos and other state.
 	Store *store.Store
+	// Workspaces creates and archives workspaces.
+	Workspaces *workspace.Manager
 }
 
 // Handler returns the HTTP handler for cfg.
@@ -66,6 +69,10 @@ func Handler(cfg Config) http.Handler {
 	api.HandleFunc("GET /api/v1/repos", repos.list)
 	api.HandleFunc("POST /api/v1/repos", repos.add)
 	api.HandleFunc("DELETE /api/v1/repos/{id}", repos.remove)
+	ws := workspaceHandlers{store: cfg.Store, manager: cfg.Workspaces}
+	api.HandleFunc("GET /api/v1/workspaces", ws.list)
+	api.HandleFunc("POST /api/v1/workspaces", ws.create)
+	api.HandleFunc("POST /api/v1/workspaces/{id}/archive", ws.archive)
 	// Every other API path needs a session too, so unknown paths answer 401
 	// to callers who are not signed in, and 404 to those who are.
 	mux.Handle("/api/", cfg.Auth.Require(api))

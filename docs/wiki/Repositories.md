@@ -23,7 +23,7 @@ All routes need a signed-in session. Send JSON with `Content-Type: application/j
 | --- | --- | --- |
 | `GET /api/v1/repos` | none | `200` with a list of `{id, name, path, addedAt}` |
 | `POST /api/v1/repos` | `{"path": "/abs/path"}` | `201` with the repo, `400` if the path is not a repo top folder, `409` if it is already added |
-| `DELETE /api/v1/repos/{id}` | none | `204`, or `404` if there is no such repo |
+| `DELETE /api/v1/repos/{id}` | none | `204`, `404` if there is no such repo, or `409` while it has workspaces |
 
 ## Where it is stored
 

@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
+import { errorFrom } from "./http";
+
 export type Repo = { id: number; name: string; path: string; addedAt: string };
 
 export type ReposApi = {
@@ -7,19 +9,6 @@ export type ReposApi = {
   add(path: string): Promise<Repo>;
   remove(id: number): Promise<void>;
 };
-
-// errorFrom reads the {"error": "..."} body the daemon sends with a 4xx or 5xx.
-async function errorFrom(res: Response, action: string): Promise<Error> {
-  try {
-    const body: unknown = await res.json();
-    if (typeof body === "object" && body !== null && typeof (body as { error?: unknown }).error === "string") {
-      return new Error((body as { error: string }).error);
-    }
-  } catch {
-    // Fall through to the generic message.
-  }
-  return new Error(`${action} failed: ${res.status}`);
-}
 
 export function reposApi(fetcher: typeof fetch = fetch): ReposApi {
   return {
