@@ -4,6 +4,8 @@
   --bg: #f0eee9; /* Cloud Dancer */
   --fg: #121417;
   --accent: #b4530a;
+  --add: #1f6f3a;
+  --del: #a3241c;
   font-family: system-ui, sans-serif;
 }
 
@@ -12,6 +14,8 @@
     --bg: #121417;
     --fg: #f0eee9;
     --accent: #f5b544;
+    --add: #7ad69a;
+    --del: #ff9a8f;
   }
 }
 
@@ -286,4 +290,53 @@ textarea {
   background: #000;
   border-radius: 0.375rem;
   overflow: hidden;
+}
+
+.changes {
+  margin: 1rem 0;
+}
+
+.changes details {
+  margin-top: 0.5rem;
+  border: 1px solid color-mix(in srgb, var(--fg) 25%, transparent);
+  border-radius: 0.375rem;
+}
+
+.changes summary {
+  padding: 0.5rem 0.75rem;
+  cursor: pointer;
+}
+
+.patch {
+  margin: 0;
+  padding: 0.5rem 0.75rem;
+  overflow-x: auto;
+  font-size: 0.8125rem;
+  border-top: 1px solid color-mix(in srgb, var(--fg) 25%, transparent);
+}
+
+.patch span {
+  min-height: 1lh;
+  display: block;
+  white-space: pre;
+}
+
+.add {
+  color: var(--add);
+}
+
+.del {
+  color: var(--del);
+}
+
+.patch .add {
+  background: color-mix(in srgb, var(--add) 12%, transparent);
+}
+
+.patch .del {
+  background: color-mix(in srgb, var(--del) 12%, transparent);
+}
+
+.patch .hunk {
+  color: var(--accent);
 }

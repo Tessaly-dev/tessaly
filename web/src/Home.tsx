@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useState } from "react";
 import { AgentPanel } from "./AgentPanel";
+import { Changes } from "./Changes";
 import { groupForHome, reason } from "./attention";
 import { NewWorkspace } from "./NewWorkspace";
 import type { Repo } from "./repos";
@@ -128,6 +129,7 @@ export function Home({ list, repos, agents, api, refresh, selected, onSelect }: 
               // key resets the start form when you switch workspaces.
               <AgentPanel key={open.id} ws={open} agents={agents} api={api} onChange={refresh} />
             )}
+            {open.state !== "creating" && open.state !== "failed" && <Changes key={open.id} workspaceId={open.id} />}
           </>
         ) : (
           <p className="hint">Pick a workspace to see its agent.</p>
