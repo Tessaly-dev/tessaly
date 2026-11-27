@@ -24,6 +24,7 @@ var testUI = fstest.MapFS{
 	"assets/app.js":  {Data: []byte("console.log('hi')")},
 	".gitkeep":       {Data: []byte("")},
 	"assets/.secret": {Data: []byte("x")},
+	".hidden/app.js": {Data: []byte("x")},
 }
 
 func do(t *testing.T, h http.Handler, method, target, host string) *httptest.ResponseRecorder {
@@ -144,6 +145,7 @@ func TestUI(t *testing.T) {
 		{http.MethodGet, "/assets", http.StatusNotFound},
 		{http.MethodGet, "/.gitkeep", http.StatusNotFound},
 		{http.MethodGet, "/assets/.secret", http.StatusNotFound},
+		{http.MethodGet, "/.hidden/app.js", http.StatusNotFound},
 		{http.MethodPost, "/", http.StatusMethodNotAllowed},
 	}
 	for _, tt := range tests {

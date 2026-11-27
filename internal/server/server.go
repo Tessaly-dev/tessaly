@@ -91,8 +91,11 @@ func health(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(healthResponse{Status: "ok", Version: version.Version})
 }
 
-// uiHandler serves files from ui. It never lists folders and hides dotfiles.
+// uiHandler serves files from ui. It indexes the files once at start, so a
+// request can only ever reach a file that is in the bundle. Folders are never
+// listed and dotfiles are never served.
 func uiHandler(ui fs.FS) http.Handler {
+	files := indexFiles(ui)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet && r.Method != http.MethodHead {
 			w.Header().Set("Allow", "GET, HEAD")
@@ -104,13 +107,9 @@ func uiHandler(ui fs.FS) http.Handler {
 		if name == "" {
 			name = "index.html"
 		}
-		if hasDotSegment(name) {
-			http.NotFound(w, r)
-			return
-		}
 
-		info, err := fs.Stat(ui, name)
-		if err != nil || info.IsDir() {
+		file, ok := files[name]
+		if !ok {
 			if name == "index.html" {
 				http.Error(w, "UI not built. Run: make ui", http.StatusServiceUnavailable)
 				return
@@ -118,9 +117,30 @@ func uiHandler(ui fs.FS) http.Handler {
 			http.NotFound(w, r)
 			return
 		}
-
-		http.ServeFileFS(w, r, ui, name)
+		http.ServeFileFS(w, r, ui, file)
 	})
+}
+
+// indexFiles returns every regular file in ui, keyed by its path, leaving out
+// anything under a dotfile or dot folder.
+func indexFiles(ui fs.FS) map[string]string {
+	files := make(map[string]string)
+	_ = fs.WalkDir(ui, ".", func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return nil // Skip unreadable entries; the bundle is read-only.
+		}
+		if p != "." && hasDotSegment(p) {
+			if d.IsDir() {
+				return fs.SkipDir
+			}
+			return nil
+		}
+		if d.Type().IsRegular() {
+			files[p] = p
+		}
+		return nil
+	})
+	return files
 }
 
 func hasDotSegment(name string) bool {
