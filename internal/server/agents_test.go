@@ -62,8 +62,8 @@ func TestAgentsList(t *testing.T) {
 	if err := json.NewDecoder(rec.Body).Decode(&list); err != nil {
 		t.Fatal(err)
 	}
-	if len(list) != 2 || list[0].Name != "echo" || list[1].Name != "sleep" {
-		t.Errorf("agents = %+v, want echo and sleep", list)
+	if len(list) != 3 || list[0].Name != "echo" || list[1].Name != "file" || list[2].Name != "sleep" {
+		t.Errorf("agents = %+v, want echo, file and sleep", list)
 	}
 }
 
@@ -138,5 +138,21 @@ func TestAgentStartRejects(t *testing.T) {
 	}
 	if rec := send(t, h, http.MethodPost, "/api/v1/workspaces/999/start", startBody("echo", "x"), c, nil); rec.Code != http.StatusNotFound {
 		t.Errorf("start in missing workspace = %d, want 404", rec.Code)
+	}
+}
+
+func TestAgentRunAPIWithPromptFile(t *testing.T) {
+	h := testHandler(t, testUI)
+	c := signIn(t, h)
+	ws := newWorkspace(t, h, c, "file")
+
+	prompt := "a task that must not show in ps"
+	if rec := send(t, h, http.MethodPost, wsPath(ws, "start"), startBody("file", prompt), c, nil); rec.Code != http.StatusOK {
+		t.Fatalf("start = %d: %s", rec.Code, rec.Body)
+	}
+	waitState(t, h, c, ws.ID, "exited")
+	rec := send(t, h, http.MethodGet, wsPath(ws, "output"), "", c, nil)
+	if !strings.Contains(rec.Body.String(), prompt) {
+		t.Errorf("output = %q, want the prompt read from the file", rec.Body.String())
 	}
 }

@@ -9,9 +9,11 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/tessaly-dev/tessaly/internal/ptyx"
@@ -39,8 +41,10 @@ var ErrTooManyRunning = fmt.Errorf("%d agents are running already. Stop one firs
 
 // Start runs argv as the workspace's agent, in its worktree, under a
 // pseudo-terminal. Output is kept in memory and appended to the transcript
-// at ~/.tessaly/logs/workspace-<id>.log.
-func (m *Manager) Start(ctx context.Context, ws store.Workspace, agentName string, argv []string) (store.Workspace, error) {
+// at ~/.tessaly/logs/workspace-<id>.log. If argv holds PromptPath(ws.ID),
+// Start writes prompt to that file first, and the file is deleted when the
+// agent exits.
+func (m *Manager) Start(ctx context.Context, ws store.Workspace, agentName string, argv []string, prompt string) (store.Workspace, error) {
 	m.runMu.Lock()
 	defer m.runMu.Unlock()
 
@@ -54,6 +58,18 @@ func (m *Manager) Start(ctx context.Context, ws store.Workspace, agentName strin
 	if len(m.runs) >= m.maxRuns {
 		return ws, ErrTooManyRunning
 	}
+
+	if slices.Contains(argv, m.PromptPath(ws.ID)) {
+		if err := m.writePrompt(ws.ID, prompt); err != nil {
+			return ws, err
+		}
+	}
+	started := false
+	defer func() {
+		if !started {
+			m.removePrompt(ws.ID)
+		}
+	}()
 
 	transcript, err := m.openTranscript(ws.ID)
 	if err != nil {
@@ -80,6 +96,7 @@ func (m *Manager) Start(ctx context.Context, ws store.Workspace, agentName strin
 	}
 	ws.Agent, ws.ExitCode = agentName, nil
 
+	started = true
 	r := &run{proc: proc, recorded: make(chan struct{})}
 	m.runs[ws.ID] = r
 	// The agent outlives this request, so watch must not use its context.
@@ -100,6 +117,7 @@ func (m *Manager) watch(ws store.Workspace, r *run, transcript *cappedFile) {
 	code := r.proc.ExitCode()
 	_, _ = transcript.WriteNote(fmt.Sprintf("\r\n--- tess: exited with code %d ---\r\n", code))
 	_ = transcript.Close()
+	m.removePrompt(ws.ID)
 
 	m.runMu.Lock()
 	defer m.runMu.Unlock()
@@ -166,6 +184,39 @@ func (m *Manager) Process(id int64) *ptyx.Process {
 // TranscriptPath returns where the transcript of workspace id is kept.
 func (m *Manager) TranscriptPath(id int64) string {
 	return filepath.Join(m.home, "logs", "workspace-"+strconv.FormatInt(id, 10)+".log")
+}
+
+// PromptPath returns where the prompt of workspace id is written for an agent
+// whose command holds "{prompt_file}".
+func (m *Manager) PromptPath(id int64) string {
+	return filepath.Join(m.home, "prompts", "workspace-"+strconv.FormatInt(id, 10)+".txt")
+}
+
+// writePrompt writes prompt to PromptPath(id) with mode 0600 in a 0700
+// folder, refusing to follow a symlink there.
+func (m *Manager) writePrompt(id int64, prompt string) error {
+	path := m.PromptPath(id)
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return fmt.Errorf("create prompts folder: %w", err)
+	}
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC|syscall.O_NOFOLLOW, 0o600) // #nosec G304 -- path is built from the workspace id.
+	if err != nil {
+		return fmt.Errorf("write prompt file: %w", err)
+	}
+	if _, err := f.WriteString(prompt); err != nil {
+		_ = f.Close()
+		return fmt.Errorf("write prompt file: %w", err)
+	}
+	if err := f.Close(); err != nil {
+		return fmt.Errorf("write prompt file: %w", err)
+	}
+	return nil
+}
+
+func (m *Manager) removePrompt(id int64) {
+	if err := os.Remove(m.PromptPath(id)); err != nil && !errors.Is(err, os.ErrNotExist) {
+		slog.Error("remove prompt file", "workspace", id, "err", err)
+	}
 }
 
 // openTranscript opens the transcript of workspace id for appending. If it

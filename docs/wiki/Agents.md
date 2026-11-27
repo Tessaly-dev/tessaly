@@ -8,7 +8,7 @@ Add agents to `~/.tessaly/config.toml`, then restart `tess serve`:
 
 ```toml
 [agents.aider]
-command = ["aider", "--message", "{prompt}"]
+command = ["aider", "--message-file", "{prompt_file}"]
 
 [agents.claude]
 command = ["claude", "{prompt}"]
@@ -19,6 +19,7 @@ command = ["bash"]
 
 - `command` is an argv array. Tessaly never runs it through a shell, so `|`, `&&` and `$VAR` have no special meaning.
 - An element that is exactly `{prompt}` is replaced by the task prompt, as one argument. `{prompt}` inside a longer element is left alone.
+- An element that is exactly `{prompt_file}` is replaced by the path of a file that holds the prompt. Use it when the CLI can read its task from a file. Arguments show in `ps` to every user on the machine, and a file does not. Tessaly writes the file to `~/.tessaly/prompts/workspace-<id>.txt` with mode 0600 just before the agent starts, and deletes it when the agent exits.
 - Agent names use lower-case letters, digits and dashes, up to 32 characters.
 - Tessaly refuses to start if other users can write the file (`chmod go-w ~/.tessaly/config.toml`).
 
