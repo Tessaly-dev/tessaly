@@ -30,7 +30,7 @@ Tessaly runs coding agents side by side on your own machine. It is one Go binary
 
 ## Try the skeleton
 
-You need Go 1.24 or newer, Node 20 or newer, and pnpm.
+You need Go 1.27 or newer, Node 20 or newer, and pnpm.
 
 ```sh
 git clone https://github.com/tessaly-dev/tessaly.git
