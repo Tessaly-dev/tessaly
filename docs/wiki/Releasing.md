@@ -13,6 +13,8 @@ Pushing a version tag starts the release workflow. It builds `tess` for Linux an
 
 The workflow also stores a build provenance attestation for every archive on GitHub.
 
+It pushes a multi-arch image to `ghcr.io/tessaly-dev/tessaly`, tagged with the version and, for full releases, `latest`. The image is signed with cosign by digest, has a buildkit SBOM and a provenance attestation pushed next to it. See [Docker](Docker).
+
 There is no native Windows build. Windows users run the Linux build in WSL2.
 
 ## Cut a release
@@ -30,6 +32,8 @@ There is no native Windows build. Windows users run the Linux build in WSL2.
 3. Wait for the Release workflow to finish. It stops if the tagged commit is not on `main`.
 4. Open the draft on the releases page, read the notes, then publish it.
 
+The image is public as soon as the workflow pushes it, because a draft release cannot hold it back. After the very first release, set the `tessaly` package to public in the org's package settings, since GHCR creates new packages as private.
+
 The `release` environment in the repo settings gates the workflow. Add required reviewers there so each release waits for a second maintainer.
 
 ## Try a release build locally
@@ -40,7 +44,7 @@ You need [GoReleaser](https://goreleaser.com/install/) v2.
 make snapshot
 ```
 
-This writes the archives and `checksums.txt` to `dist/`, without signing or uploading anything. CI runs the same snapshot on every pull request, so a broken release config fails before a tag.
+This writes the archives and `checksums.txt` to `dist/` and builds the image, without signing, pushing or uploading anything. It needs Docker with buildx. CI runs the same snapshot on every pull request, so a broken release config fails before a tag.
 
 ## Verify a download
 
@@ -74,7 +78,7 @@ It picks the archive for your OS and CPU, checks the cosign signature on `checks
 ## How the workflow stays safe
 
 - It runs only on `v*` tags, and only for commits already on `main`.
-- The workflow has no permissions by default. The release job gets `contents: write`, `id-token: write` and `attestations: write`, and nothing else.
+- The workflow has no permissions by default. The release job gets `contents: write`, `packages: write`, `id-token: write` and `attestations: write`, and nothing else.
 - Every action is pinned to a full commit SHA, and GoReleaser to an exact version.
 - It uses no dependency caches, so a cache written by another workflow cannot reach a release.
 - Signing is keyless through GitHub's OIDC token. There is no signing key to leak.

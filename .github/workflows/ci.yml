@@ -13,6 +13,7 @@ on:
       - .golangci.yml
       - Makefile
       - .goreleaser.yaml
+      - Dockerfile
       - "scripts/**"
       - "web/**"
       - "!web/**/*.md"
@@ -27,6 +28,7 @@ on:
       - .golangci.yml
       - Makefile
       - .goreleaser.yaml
+      - Dockerfile
       - "scripts/**"
       - "web/**"
       - "!web/**/*.md"
@@ -119,7 +121,7 @@ jobs:
     name: Build
     needs: [lint, test]
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -152,7 +154,10 @@ jobs:
           go build -trimpath -o bin/tess ./cmd/tess
           cd web && pnpm run e2e
       # A snapshot runs the release config end to end for every target,
-      # without signing or publishing, so a broken config fails here first.
+      # images included, without signing or publishing, so a broken config
+      # or Dockerfile fails here first.
+      - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
       - uses: goreleaser/goreleaser-action@a4f02ab5355a589de60d917a659ce617ed19b3de # v7.3.0
         with:
           distribution: goreleaser
