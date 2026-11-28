@@ -269,6 +269,9 @@ func hostCheck(port int, next http.Handler) http.Handler {
 const csp = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; " +
 	"base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'"
 
+const permissionsPolicy = "camera=(), microphone=(), geolocation=(), usb=(), payment=(), " +
+	"publickey-credentials-create=(self), publickey-credentials-get=(self)"
+
 func securityHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		h := w.Header()
@@ -278,6 +281,9 @@ func securityHeaders(next http.Handler) http.Handler {
 		h.Set("Referrer-Policy", "no-referrer")
 		h.Set("Cross-Origin-Opener-Policy", "same-origin")
 		h.Set("Cross-Origin-Resource-Policy", "same-origin")
+		// Turn off browser features the UI never uses. Passkeys stay on for
+		// this origin only.
+		h.Set("Permissions-Policy", permissionsPolicy)
 		next.ServeHTTP(w, r)
 	})
 }

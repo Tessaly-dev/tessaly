@@ -22,6 +22,8 @@ Open the workspace on the Home tab. Under Pull request, check the title (it star
 
 The panel then links the pull request. You cannot ship while an agent runs, so stop it first. A workspace cannot be archived while it ships.
 
+Tessaly's commits and pushes skip the repo's git hooks, such as `pre-commit` and `pre-push`. An agent can change those hooks, so running them would run its code as you. Run your checks in the agent's task or in CI instead.
+
 ## Push more changes
 
 Once a pull request is open, the panel shows Push changes and a commit message field. Pressing it commits any changes and pushes them, and the pull request picks them up.

@@ -27,6 +27,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"log/slog"
 	"net/http"
 	"os"
 	"strconv"
@@ -193,6 +194,7 @@ func (a *Auth) Login(w http.ResponseWriter, r *http.Request) {
 	a.mu.Unlock()
 	if subtle.ConstantTimeCompare(got[:], want[:]) != 1 {
 		a.countFailure()
+		slog.Info("token sign-in refused: wrong token") // Never log the token itself.
 		http.Error(w, "wrong token", http.StatusUnauthorized)
 		return
 	}

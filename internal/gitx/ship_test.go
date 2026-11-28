@@ -4,6 +4,7 @@ package gitx
 
 import (
 	"context"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -106,5 +107,40 @@ func TestRedact(t *testing.T) {
 	got := Redact("fatal: unable to access 'https://x-access-token:abc@github.com/a/b.git/'")
 	if strings.Contains(got, "abc") || !strings.Contains(got, "https://***@github.com") {
 		t.Errorf("Redact = %q", got)
+	}
+}
+
+// Hooks in the repo never run, so an agent cannot plant one that Tessaly's
+// commit or push then runs as you. A failing hook would stop git, and a
+// running one would leave its marker file.
+func TestShipSkipsHooks(t *testing.T) {
+	ctx := context.Background()
+	repo, _ := diffRepo(t)
+	gitIn(t, repo, "config", "user.name", "T")
+	gitIn(t, repo, "config", "user.email", "t@example.com")
+	remote := gitInit(t, "--bare")
+	gitIn(t, repo, "remote", "add", "origin", remote)
+	gitIn(t, repo, "switch", "-q", "-c", "tess/hooks")
+
+	marker := filepath.Join(t.TempDir(), "ran")
+	hook := "#!/bin/sh\ntouch " + marker + "\nexit 1\n"
+	hooks := filepath.Join(repo, ".git", "hooks")
+	for _, name := range []string{"pre-commit", "commit-msg", "post-commit", "pre-push", "reference-transaction"} {
+		if err := os.WriteFile(filepath.Join(hooks, name), []byte(hook), 0o700); err != nil { // #nosec G306 -- a test hook must be executable.
+			t.Fatal(err)
+		}
+	}
+	// A hooks folder set in the repo's config is ignored too.
+	gitIn(t, repo, "config", "core.hooksPath", hooks)
+
+	write(t, filepath.Join(repo, "new.txt"), "hi\n")
+	if err := CommitAll(ctx, repo, "add new.txt"); err != nil {
+		t.Fatalf("CommitAll with failing hooks: %v", err)
+	}
+	if err := Push(ctx, repo, "origin", "tess/hooks"); err != nil {
+		t.Fatalf("Push with failing hooks: %v", err)
+	}
+	if _, err := os.Stat(marker); err == nil {
+		t.Error("a repo hook ran")
 	}
 }
