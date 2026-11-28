@@ -7,7 +7,7 @@ Thanks for helping. This guide covers how to set up, how to make a change, and t
 1. Security first. Tessaly runs with your user's rights, so any bug that lets someone else reach the API puts the whole machine at risk. Read [docs/threat-model.md](docs/threat-model.md) before you touch `internal/server`.
 2. Simple code wins. Prefer the standard library, plain functions and small interfaces. No new dependency without a short note in the PR on why the standard library is not enough. No frameworks for dependency injection, mocking or ORMs.
 3. Tests with every change. A bug fix includes a test that fails before the fix. A feature includes unit tests for its logic.
-4. Docs with every change. Document a feature in the same PR that adds it: `docs/`, `docs/wiki/` and the threat model describe only what exists in the code.
+4. Docs with every change. Document a feature in the same PR that adds it: `docs/`, `docs/wiki/` and the threat model describe only what exists in the code. When a change affects what users see or do, also open a PR on [tessaly-dev/tessaly.dev](https://github.com/tessaly-dev/tessaly.dev) to update the user docs, and link it from your PR.
 
 ## Dev setup
 
@@ -61,7 +61,7 @@ Platform rules:
 | `scripts/` | `install.sh` for users, and its tests |
 | `.goreleaser.yaml` | Release builds, see [Releasing](docs/wiki/Releasing.md) |
 | `docs/` | Developer docs |
-| `docs/wiki/` | Pages published to the GitHub wiki |
+| `docs/wiki/` | Developer pages published to the GitHub wiki |
 
 Add a row here when you add a package.
 
@@ -137,7 +137,13 @@ Do not open a public issue. Follow [SECURITY.md](SECURITY.md) to report privatel
 
 ## Documentation and the wiki
 
-- Developer docs live in `docs/` and go through review like code.
+Tessaly has two sets of docs, for two readers:
+
+- User docs, for people who install and use Tessaly, live at [tessaly.dev/docs](https://tessaly.dev/docs/). Their source is in [tessaly-dev/tessaly.dev](https://github.com/tessaly-dev/tessaly.dev), in `src/content/docs/docs/`. Update them with every feature, setting, command or message users see. They cover only what works on `main`.
+- Developer docs, for contributors, live in `docs/` and `docs/wiki/`. They cover how the code works, the API and how to build, test and release. Do not put user how-to pages in the wiki: link to the user docs instead.
+
+Both go through review like code.
+
 - `docs/wiki/` holds the wiki pages. See [docs/wiki/README.md](docs/wiki/README.md) for how they stay in sync with the GitHub wiki.
 - Add a page when you add a feature, not before.
 

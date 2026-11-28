@@ -1,10 +1,12 @@
 # Workspaces
 
-A workspace is one task in one repository. It has its own git branch and its own worktree, so several tasks can run side by side without touching each other's files.
+How workspaces work inside Tessaly. For how to create, review and archive them, see [Workspaces](https://tessaly.dev/docs/workspaces/) in the user docs.
 
-## Create a workspace
+A workspace is one task in one repository, with its own git branch and worktree.
 
-On the Home tab, press New workspace (the form shows on its own when you have none), pick a repository, type a name, and press Create workspace. Tessaly then:
+## Creating
+
+Creating a workspace:
 
 1. turns the name into lower-case letters, digits and dashes, up to 48 characters, such as `fix-login`
 2. refuses if the branch `tess/<name>` already exists, because it never reuses a branch
@@ -26,19 +28,13 @@ The repo needs at least one commit.
 
 Only these moves are allowed: `creating` to `ready` or `failed`, `ready` to `running`, `archived` or `failed`, `running` to `exited`, `exited` to `running` or `archived`, and `failed` to `archived`. The table lives in `internal/workspace/state.go`.
 
-## Review changes
+## The diff
 
-Open a workspace on the Home tab and press Review changes. Tessaly shows everything the workspace changed since the commit it was created from: commits on its branch, staged and unstaged edits, and new files that git does not ignore. Each file gets its own section with its added and removed lines. Press Refresh changes to load the diff again while an agent works.
+The diff covers everything since the commit the workspace was created from: commits on its branch, staged and unstaged edits, and new files that git does not ignore. It loads only when the user asks, and stops at 1 MiB or 500 new files, with `truncated: true`. Tessaly runs `git diff` with `--no-ext-diff` and `--no-textconv`, so diff programs set in the repo's config never run.
 
-The diff loads only when you ask, and stops at 1 MiB or 500 new files. The panel says so when it is cut. Tessaly runs `git diff` with `--no-ext-diff` and `--no-textconv`, so diff programs set in the repo's config never run.
+## Archiving
 
-To send the changes for review, open a pull request. See [Pull requests](Pull-requests).
-
-## Archive a workspace
-
-Press Archive. Tessaly runs `git worktree remove` without `--force`. If the worktree has uncommitted or untracked files, it refuses, so you do not lose work. Commit or delete those files first. The branch is kept.
-
-A repository with workspaces cannot be removed from Tessaly.
+Archiving runs `git worktree remove` without `--force`, so it refuses while the worktree has uncommitted or untracked files. The branch is kept. A repository with workspaces cannot be removed from Tessaly.
 
 ## API
 

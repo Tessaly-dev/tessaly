@@ -1,53 +1,34 @@
 # Sign in
 
-Every API call needs you to sign in. This keeps other people and programs on the same machine from using Tessaly as you.
+How sign-in works inside Tessaly. For how to sign in, add a passkey or reset sign-in, see [Sign in](https://tessaly.dev/docs/sign-in/) in the user docs.
 
-There are two ways to sign in: a passkey, and the login token. You use the token the first time, then add a passkey. Once a passkey exists, the token no longer signs in.
+Every API call needs a session. This keeps other people and programs on the same machine from using Tessaly as you. There are two ways to get one: the login token, and a passkey. Once a passkey exists, the token no longer signs in unless `tess serve` runs with `--allow-token-login`.
 
 ## The login token
 
-The first time `tess serve` starts, it writes a random token to `~/.tessaly/token`. Only your OS user can read that file (mode 0600), and the folder is mode 0700. `tess serve` refuses to start if other users can read either one.
+The first time `tess serve` starts, it writes a random token to `<home>/token`, where `<home>` is `~/.tessaly` or `TESSALY_HOME`. The file is mode 0600 and the folder 0700. `tess serve` refuses to start if other users can reach either one. The folder also holds `tessaly.db`.
 
-To move the data folder, set `TESSALY_HOME` to an absolute path. The folder also holds `tessaly.db`, Tessaly's state.
-
-### Signing in with the token
-
-- In a terminal, `tess serve` prints a link like `http://localhost:7777/#token=...`. Open it and you are signed in. The token sits after `#`, so your browser never sends it to the server, and the page removes it from the address bar.
-- When stdout is not a terminal, for example under systemd, `tess serve` prints only the path of the token file. Open the UI and paste the token into the form.
+In a terminal, `tess serve` prints a link with the token after `#`, so the browser never sends it to the server. The page reads it, signs in and removes it from the address bar. When stdout is not a terminal, it prints only the path of the token file. Once a passkey exists, it prints a passkey hint instead.
 
 ## Passkeys
 
-A passkey signs you in with your fingerprint, face or device PIN, through WebAuthn. It cannot be phished or copied out of a log file the way a token can.
+Passkeys use WebAuthn through `go-webauthn`. The relying party ID is `localhost`, plus the host of an `https://` `public_url` as a second site. Browsers do not accept an IP address as a relying party ID, and treat `localhost` as secure without HTTPS. Each passkey is bound to the site it was made on. On `127.0.0.1` or an `http://` `public_url`, the sign-in page links to the `localhost` address.
 
-1. Sign in with the token at `http://localhost:7777`.
-2. Open the Passkeys tab, give the passkey a name and select Add a passkey.
-3. Next time, select Sign in with a passkey.
-
-Passkeys work at `http://localhost:<port>`, and at an `https://` `public_url` (see [Remote access](Remote-access)). Browsers do not accept an IP address such as `127.0.0.1` as a passkey site, and they treat `localhost` as secure without HTTPS. An SSH tunnel to `localhost` works as is: `ssh -L 7777:127.0.0.1:7777 you@host`, then open `http://localhost:7777`. If you open Tessaly at `127.0.0.1` or an `http://` `public_url`, the sign-in page links to the `localhost` address. A passkey belongs to the address it was made on.
-
-### Token sign-in turns off
-
-Once you have a passkey, the token no longer signs in, and `tess serve` prints a passkey hint instead of the token link. Sessions that were signed in keep working.
-
-To keep token sign-in on, for example for scripts that call the API, start `tess serve --allow-token-login`.
-
-### Changing your passkeys
-
-Adding a second passkey, or removing one, needs a passkey check from the last 5 minutes, even inside a signed-in session. Signing in with a passkey counts as a check. Otherwise the UI asks for your passkey first. This stops someone who only has the token from swapping in their own passkey.
+Adding a second passkey, or removing one, needs a passkey check from the last 5 minutes (`auth.RequireFresh`), even inside a signed-in session. Signing in with a passkey counts. This stops someone who only has the token from swapping in their own passkey.
 
 Removing a passkey ends every session that signed in with it. Removing the last one turns token sign-in back on.
 
-Each install makes its own random WebAuthn user ID, so two installs on the same port, such as one on the host and one in a container, do not replace each other's passkeys in your browser.
+Each install makes its own random WebAuthn user ID, so two installs on the same port, such as one on the host and one in a container, do not replace each other's passkeys in the browser.
 
 ## Sessions
 
-A sign-in has two parts. The browser keeps a cookie, and the page keeps a session key in its local storage. Browsers send cookies for `localhost` and `127.0.0.1` to every port, so another local server you open could get the cookie. Local storage belongs to one origin, port included, so that server never sees the key, and the cookie alone does not work.
+A session has two parts. The browser keeps a cookie, and the page keeps a session key in its local storage. Browsers send cookies for `localhost` and `127.0.0.1` to every port, so another local server could get the cookie. Local storage belongs to one origin, port included, so that server never sees the key, and the cookie alone does not work. The cookie is `Secure` on an `https://` `public_url`.
 
 After 10 failed sign-ins in a minute, wrong tokens and refused passkeys together, sign-in closes for the rest of that minute, even for the right token or passkey, and replies `429` with a `Retry-After` header.
 
-A sign-in lasts 7 days. Restarting `tess serve` signs everyone out. Use the Sign out button to end a session early. It also deletes the key from the browser.
+A session lasts 7 days. Sessions live in memory, so restarting `tess serve` ends them all. Sign out also deletes the key from the browser.
 
-## Calling the API yourself
+## API
 
 `POST /api/v1/login` with `{"token": "..."}` replies `200` with `{"key": "..."}` and sets the `tessaly_session` cookie. It replies `403` when a passkey exists and `--allow-token-login` is off. Send both halves on every other call: the cookie, and the key in the `X-Tessaly-Key` header. A WebSocket cannot carry that header, so offer the subprotocols `tessaly` and `tessaly.key.<key>`. The server picks `tessaly`.
 
@@ -65,31 +46,15 @@ The passkey routes run a WebAuthn ceremony in two steps. A `begin` route replies
 | `GET /api/v1/reset-notice` | Yes | `{"resetAt": "<time>"}` after `tess auth reset`, or `null` |
 | `DELETE /api/v1/reset-notice` | Yes | Dismiss the reset notice |
 
-## Lost your passkeys: tess auth reset
+## tess auth reset
 
-Run this on the machine that runs `tess serve`:
+`tess auth reset` removes every passkey, ends every session and writes a new token. It has no HTTP route, so it only works on the host. It asks the user to type the host name, which a script can pipe in.
 
-```sh
-tess auth reset
-```
+The new token signs in once, within 15 minutes. The `token_state` setting tracks it: empty for a normal token, `reset:<time>` for an unused reset token, `reset:pending` when the reset happened while `tess serve` was stopped (the 15 minutes start on the next start), and `used` once it has signed in. With `--allow-token-login` the token keeps working as before.
 
-It shows this machine's host name and asks you to type it, so a reset only happens on purpose and on the machine you meant. A script can pipe the name in, for example `hostname | tess auth reset`. Then it removes every passkey, ends every session and writes a new token. The old token stops working. In a terminal it prints a new sign-in link.
+The command refuses to run from an agent's terminal. Agents run as the same OS user, so without this check an agent could reset sign-in and read the new token. The daemon walks the caller's process tree (`control.InTree`) and refuses it when it runs under an agent that Tessaly started.
 
-The new token signs in once, within 15 minutes. If you reset while `tess serve` is stopped, the 15 minutes start when it starts. Add a passkey right after you sign in: once the token is used, it does not sign in again, and you need another reset. With `tess serve --allow-token-login` the token keeps working as before.
+- While `tess serve` runs, the command asks the daemon over its control socket, `<home>/run/control.sock`. The socket is mode 0600 in a 0700 folder, and the daemon checks the caller's UID and PID and refuses other OS users. It is not part of the HTTP server, so no web page or network client can reach it.
+- While `tess serve` is stopped, the command changes the token file and `tessaly.db` itself. The daemon holds a lock file, `<home>/run/tess.lock`, while it runs, which is how the command tells the two cases apart. The lock also stops a second `tess serve` from using the same data folder.
 
-The command refuses to run from an agent's terminal. Agents run as your OS user, so without this check an agent could reset sign-in and read the new token. The daemon walks the caller's process tree and refuses it when it runs under an agent that Tessaly started.
-
-- While `tess serve` runs, the command asks the daemon over its control socket, `~/.tessaly/run/control.sock`. The socket is mode 0600 in a 0700 folder, and the daemon refuses callers that run as another OS user. It is not part of the HTTP server, so no web page or network client can reach it.
-- While `tess serve` is stopped, the command changes the token file and `tessaly.db` itself. The daemon holds a lock file, `~/.tessaly/run/tess.lock`, while it runs, which is how the command tells the two cases apart. The lock also stops a second `tess serve` from using the same data folder.
-
-Each reset writes a row to the `auth_events` table in `tessaly.db`, and a running daemon logs a warning. Every session ends, so a reset you did not make shows up as being signed out. Whoever signs in next sees a notice that sign-in was reset, with the time, until they dismiss it.
-
-In Docker, run `docker exec -it tess tess auth reset` and type the container's host name it shows. Then read the new token with `docker exec tess cat /data/token`.
-
-## Changing the token
-
-Run `tess auth reset`. It also removes your passkeys. To change only the token, stop `tess serve`, delete `~/.tessaly/token` and start it again.
-
-## Keep it secret
-
-Anyone with the token can run Tessaly as you while token sign-in is on. Do not paste it into chats or commit it.
+Each reset writes a row to the `auth_events` table, and a running daemon logs a warning. Whoever signs in next sees a notice with the time of the reset until they dismiss it.

@@ -5,6 +5,6 @@ These docs describe how Tessaly works today and how to build it. They are review
 | Page | What it covers |
 | --- | --- |
 | [threat-model.md](threat-model.md) | The security controls in the code, and the test for each one |
-| [wiki/](wiki/) | Pages for the GitHub wiki, and how the wiki stays in sync |
+| [wiki/](wiki/) | Developer pages for the GitHub wiki, and how the wiki stays in sync. User docs live at [tessaly.dev/docs](https://tessaly.dev/docs/) |
 
 For the dev setup and contribution rules, see [CONTRIBUTING.md](../CONTRIBUTING.md).

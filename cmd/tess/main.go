@@ -67,7 +67,7 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 		return serve(ctx, args[1:], stdout, stderr)
 	case "auth":
 		if len(args) < 2 || args[1] != "reset" {
-			fmt.Fprint(stderr, "Usage: tess auth reset [--yes]\n")
+			fmt.Fprint(stderr, "Usage: tess auth reset\n")
 			return 2
 		}
 		return authReset(ctx, args[2:], stdin, stdout, stderr)

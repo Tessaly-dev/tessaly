@@ -1,19 +1,16 @@
 # Repositories
 
-Tessaly works on git repositories you add. Adding a repo only records its path. Tessaly does not change files in it.
+How repo records work. For how to add and remove repositories, see [Repositories](https://tessaly.dev/docs/repositories/) in the user docs.
 
-## Add a repository
+Adding a repo only records its path. Tessaly does not change files in it.
 
-Sign in, open the Repositories tab, type the absolute path of the repo's top folder, and press Add repository. The path must be:
+## Adding
 
-- absolute, such as `/home/you/code/app`
-- the top folder of a git work tree, not a subfolder and not a bare repo
+The path must be absolute and the top folder of a git work tree, not a subfolder and not a bare repo. Tessaly resolves symlinks and stores the real path. It names the repo after the folder, in lower case with only letters, numbers and dashes. If the name is taken it adds `-2`, `-3` and so on.
 
-Tessaly resolves symlinks and stores the real path. It names the repo after the folder, in lower case with only letters, numbers and dashes. If the name is taken it adds `-2`, `-3` and so on.
+## Removing
 
-## Remove a repository
-
-Press Remove next to it. This deletes Tessaly's record only. Your files and git history stay as they are.
+Removing deletes Tessaly's record only. A foreign key from workspaces blocks it while the repo has any workspace, archived ones included, and the API replies `409`.
 
 ## API
 

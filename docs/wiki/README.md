@@ -2,6 +2,8 @@
 
 This folder holds the pages for the [GitHub wiki](https://github.com/tessaly-dev/tessaly/wiki). The repo is the source of truth. The wiki is a published copy.
 
+The wiki is for developers and contributors. Pages for people who use Tessaly belong in the user docs at [tessaly.dev/docs](https://tessaly.dev/docs/), whose source is in [tessaly-dev/tessaly.dev](https://github.com/tessaly-dev/tessaly.dev).
+
 ## Keeping the wiki in sync
 
 1. Edit pages here, never in the wiki web editor. Changes go through a pull request like code.
