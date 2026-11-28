@@ -9,7 +9,8 @@
 ## Checklist
 
 - [ ] Tests added or updated, and `make check` passes
-- [ ] Docs updated in `docs/` if behaviour, config or the API changed
+- [ ] Developer docs updated in `docs/` or `docs/wiki/` if behaviour, config or the API changed
+- [ ] User docs updated in [tessaly.dev](https://github.com/tessaly-dev/tessaly.dev) if users see a change (link the PR), or not needed
 - [ ] No new dependency, or the PR explains why the standard library is not enough
 - [ ] Security impact considered (auth, file access, shell commands, network)
 - [ ] Every commit is signed off (`git commit -s`)

@@ -1,10 +1,12 @@
 # Agents
 
+How Tessaly runs agents. For how to set up and run an agent, see [Agents](https://tessaly.dev/docs/agents/) in the user docs.
+
 Tessaly runs agent CLIs in workspaces. Today it has one adapter, the generic adapter: it runs any command you list in the config file, under a terminal, in the workspace's worktree. It does not read the agent's output, so it knows only whether the agent runs, whether it has been quiet for a while, and how it ended.
 
-## Set up an agent
+## Config
 
-Add agents to `~/.tessaly/config.toml`, then restart `tess serve`:
+Agents come from `~/.tessaly/config.toml`, read when `tess serve` starts (`internal/config`):
 
 ```toml
 [agents.aider]
@@ -25,9 +27,9 @@ command = ["bash"]
 - Agent names use lower-case letters, digits and dashes, up to 32 characters.
 - Tessaly refuses to start if other users can write the file (`chmod go-w ~/.tessaly/config.toml`).
 
-## Run an agent
+## Running
 
-Click a workspace on the [Home tab](Your-work) to open its agent panel, pick an agent, type a prompt and press Start agent. The agent:
+A started agent:
 
 - starts in the worktree, under a terminal 120 columns wide
 - gets your environment minus `TESSALY_*` and `GIT_*` variables, plus `TERM=xterm-256color`, `TESSALY_WORKSPACE` and `TESSALY_BRANCH`
@@ -37,17 +39,17 @@ A transcript stops growing at 64 MiB and ends with a note that later output is n
 
 Up to 16 agents run at once. Stop one to start another.
 
-The panel shows the agent's terminal live. Click into it to type: keystrokes go to the agent as if you typed in a local terminal. Resizing the window resizes the agent's terminal. After the agent exits, the panel shows the end of the transcript.
+The UI shows the terminal live over the [terminal socket](#terminal-socket), and sends keystrokes and resizes back.
 
-Press Stop agent to end it. Tessaly sends SIGTERM to the agent and every process it started, and SIGKILL after 10 seconds. When the agent exits, the workspace shows `exited` and the exit code. You can start an agent again in an exited workspace.
+Stopping sends SIGTERM to the agent and every process it started, and SIGKILL after 10 seconds. When the agent exits, the workspace moves to `exited` with the exit code. An exited workspace can start an agent again.
 
 Stopping `tess serve` stops every agent. A workspace that was running when Tessaly crashed shows `exited` on the next start.
 
 ### Resume after a restart
 
-When `tess serve` stops or crashes while an agent runs, the run is cut off. On the next start the workspace sits under Needs your input on the [Home tab](Your-work) as "Cut off when tess stopped". Nothing restarts on its own.
+When `tess serve` stops or crashes while an agent runs, the run is cut off. On the next start the workspace has `ended: "interrupted"` and sits under Needs your input on the Home tab. Nothing restarts on its own.
 
-If the agent has a `resume` command, the workspace shows a Resume button. Press it to run that command in the worktree, as the same agent. Without one, open the workspace and start a new run.
+`POST /api/v1/workspaces/{id}/resume` runs the agent's `resume` command in the worktree, as the same agent.
 
 ### How a run ended
 
@@ -56,7 +58,7 @@ Each workspace keeps how its last run ended, in the `ended` field:
 | `ended` | Meaning |
 | --- | --- |
 | `exited` | The agent exited on its own. `exitCode` says how |
-| `stopped` | You pressed Stop agent |
+| `stopped` | The user stopped it |
 | `interrupted` | `tess serve` stopped or crashed while the agent ran |
 
 The field is empty while an agent runs and before the first run.

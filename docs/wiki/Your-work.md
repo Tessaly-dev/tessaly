@@ -1,29 +1,21 @@
 # Your work
 
-The Home tab lists every workspace that is not archived by what it needs from you. The most urgent work sits at the top:
+How the Home list and the Board group workspaces. For how to use them, see [Home and Board](https://tessaly.dev/docs/home-and-board/) in the user docs.
 
-| Group | What is in it |
+The UI works out each workspace's group in `web/src/attention.ts`, from the workspace list the API returns. The Home tab lists groups in this order, most urgent first:
+
+| Group | Rule |
 | --- | --- |
-| Needs your input | Agents that run but have been quiet for 5 seconds, so they probably wait for an answer. Also runs that `tess serve` cut off when it stopped, with a Resume button when the agent has a `resume` command |
-| Ready to review | Agents that exited with code 0, agents you stopped, and work with an open pull request. The line under each shows its CI check status, see [Pull requests](Pull-requests#check-status) |
-| Failed | Agents that exited with another code, and workspaces whose setup failed |
-| Running | Agents that are working and printing output |
-| Not started | Workspaces where no agent has run yet |
+| Needs your input | `running` with `waiting: true` (see [Agents](Agents#waiting-for-you)), or `exited` with `ended: "interrupted"`. An interrupted run shows a Resume button when its agent has a `resume` command |
+| Ready to review | `exited` with `ended: "stopped"` or exit code 0, or `ready` with an open pull request. The line under it shows the CI check status, see [Pull requests](Pull-requests#check-status) |
+| Failed | `failed`, or `exited` with another code |
+| Running | `running` and not waiting |
+| Not started | `creating`, or `ready` with no pull request |
 
-Archived workspaces do not show. Empty groups are hidden. The list reloads every 2 seconds, so a workspace moves between groups on its own.
+Archived workspaces do not show on Home, and empty groups are hidden. The UI polls `GET /api/v1/workspaces` every 2 seconds.
 
-"Needs your input" is a guess. Tessaly cannot read what the agent prints, so an agent that thinks for 5 seconds without printing also lands there. See [Agents](Agents#waiting-for-you).
-
-## Open a workspace
-
-Click a workspace to open it beside the list. You see its repo, branch and state, and its agent panel: start or stop the agent, and type into its live terminal. Press Review changes to see its diff, see [Workspaces](Workspaces#review-changes). On a phone the panel shows below the list.
-
-Press New workspace under the list to create one. See [Workspaces](Workspaces).
+"Needs your input" is a guess, because the generic adapter cannot read what the agent prints.
 
 ## Board
 
-The Board tab shows every workspace as a card in a column for its stage: Not started, Running, Needs your input, Ready to review, Failed and Archived. Use it for an overview of all your tasks at once. Click a card to open the workspace on the Home tab. Archived cards show the branch that was kept, and do not open.
-
-## Repositories
-
-Add and remove repositories on the Repositories tab. See [Repositories](Repositories).
+The Board tab shows every workspace as a card in a column for its group, plus an Archived column. Clicking a card opens the workspace on the Home tab. Archived cards do not open.

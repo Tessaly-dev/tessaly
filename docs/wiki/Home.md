@@ -1,18 +1,18 @@
 # Tessaly wiki
 
-Tessaly runs coding agents side by side on your own machine. It is one Go binary with a browser UI.
+This wiki is for people who work on Tessaly's code: how each part works inside, its API, how to build and test it, and how releases are made.
+
+To learn how to install and use Tessaly, read the user docs at [tessaly.dev/docs](https://tessaly.dev/docs/).
 
 These pages are published from [`docs/wiki/`](https://github.com/tessaly-dev/tessaly/tree/main/docs/wiki) in the main repo. To change a page, open a pull request there.
 
-- [Sign in](Sign-in): passkeys, the login token and how sign-in works
-- [Your work](Your-work): the home view, sorted by what needs you
-- [Repositories](Repositories): add and remove the repos Tessaly works on
-- [Workspaces](Workspaces): a branch and worktree for each task
-- [Agents](Agents): set up agent CLIs and run them in a workspace
-- [Pull requests](Pull-requests): review the diff, open a GitHub pull request and follow its checks
-- [Remote access](Remote-access): SSH tunnel, HTTPS reverse proxy or VPN, with `public_url`
-- [Docker](Docker): run tess in a container
 - [Dev setup](Dev-setup): build and test Tessaly locally
+- [Sign in](Sign-in): how the token, passkeys, sessions and `tess auth reset` work, and the auth API
+- [Your work](Your-work): how the Home list and the Board group workspaces
+- [Repositories](Repositories): repo records and their API
+- [Workspaces](Workspaces): branches, worktrees, states, the diff and their API
+- [Agents](Agents): the generic adapter, the terminal and their API
+- [Pull requests](Pull-requests): how shipping and check status work, and their API
 - [Releasing](Releasing): how maintainers cut a signed release
 - [Threat model](Threat-model): the security controls in the code today
 
