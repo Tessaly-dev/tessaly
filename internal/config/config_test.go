@@ -79,3 +79,30 @@ func TestLoadRejects(t *testing.T) {
 		})
 	}
 }
+
+func TestPublicURL(t *testing.T) {
+	cfg, err := Load(writeConfig(t, `public_url = "https://Tess.Example.com/"`+"\n", 0o600))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := cfg.Public(); got == nil || got.String() != "https://tess.example.com" {
+		t.Errorf("Public() = %v, want https://tess.example.com", got)
+	}
+	if (Config{}).Public() != nil {
+		t.Error("an empty public_url gives a URL")
+	}
+	for _, bad := range []string{
+		"tess.example.com", "ftp://tess.example.com", "https://", "https://u:p@tess.example.com",
+		"https://tess.example.com/tess", "https://tess.example.com/?a=1", "https://tess.example.com/#x",
+	} {
+		if _, err := ParsePublicURL(bad); err == nil {
+			t.Errorf("ParsePublicURL(%q) passed, want an error", bad)
+		}
+		if _, err := Load(writeConfig(t, `public_url = "`+bad+`"`+"\n", 0o600)); err == nil {
+			t.Errorf("Load with public_url %q passed, want an error", bad)
+		}
+	}
+	if u, err := ParsePublicURL("http://tess.tailnet:7777"); err != nil || u.Host != "tess.tailnet:7777" {
+		t.Errorf("ParsePublicURL with a port = %v, %v", u, err)
+	}
+}

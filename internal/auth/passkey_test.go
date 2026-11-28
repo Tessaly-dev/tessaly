@@ -14,6 +14,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -40,6 +41,7 @@ type authenticator struct {
 	id      []byte
 	counter uint32
 	origin  string // The origin it reports. Defaults to testOrigin.
+	rpID    string // The site it signs for. Defaults to "localhost".
 	noUV    bool   // Leave out the user verification flag.
 }
 
@@ -51,7 +53,7 @@ func newAuthenticator(t *testing.T) *authenticator {
 	}
 	id := make([]byte, 16)
 	_, _ = rand.Read(id)
-	return &authenticator{key: key, id: id, origin: testOrigin}
+	return &authenticator{key: key, id: id, origin: testOrigin, rpID: PasskeyHost}
 }
 
 func (a *authenticator) clientData(t *testing.T, typ, challenge string) []byte {
@@ -63,10 +65,10 @@ func (a *authenticator) clientData(t *testing.T, typ, challenge string) []byte {
 	return data
 }
 
-// authData builds authenticator data for rpID "localhost". attested holds
-// the attested credential data on registration.
+// authData builds authenticator data for a.rpID. attested holds the
+// attested credential data on registration.
 func (a *authenticator) authData(attested []byte) []byte {
-	rp := sha256.Sum256([]byte("localhost"))
+	rp := sha256.Sum256([]byte(a.rpID))
 	flags := byte(0x01) // User present.
 	if !a.noUV {
 		flags |= 0x04
@@ -163,11 +165,17 @@ func mustJSON(t *testing.T, v any) json.RawMessage {
 // mounts.
 type testAuth struct {
 	*Auth
-	h  http.Handler
-	db *store.Store
+	h    http.Handler
+	db   *store.Store
+	host string // The Host of requests without a client host. Defaults to testHost.
 }
 
 func newTestAuth(t *testing.T, allowToken bool) *testAuth {
+	t.Helper()
+	return newTestAuthAt(t, allowToken, nil)
+}
+
+func newTestAuthAt(t *testing.T, allowToken bool, public *url.URL) *testAuth {
 	t.Helper()
 	db, err := store.Open(context.Background(), filepath.Join(t.TempDir(), "tessaly.db"))
 	if err != nil {
@@ -175,7 +183,7 @@ func newTestAuth(t *testing.T, allowToken bool) *testAuth {
 	}
 	t.Cleanup(func() { _ = db.Close() })
 	a := New(strings.Repeat("A", tokenLen))
-	if err := a.EnablePasskeys(db, testPort, allowToken); err != nil {
+	if err := a.EnablePasskeys(db, testPort, public, allowToken); err != nil {
 		t.Fatal(err)
 	}
 	mux := http.NewServeMux()
@@ -196,7 +204,7 @@ func newTestAuth(t *testing.T, allowToken bool) *testAuth {
 		w.WriteHeader(http.StatusNoContent)
 	})))
 	mux.Handle("/api/", a.Require(api))
-	return &testAuth{Auth: a, h: mux, db: db}
+	return &testAuth{Auth: a, h: mux, db: db, host: testHost}
 }
 
 // client is one browser: a cookie and a session key.
@@ -215,7 +223,7 @@ func (ta *testAuth) do(t *testing.T, c *client, method, target string, body any)
 		r = httptest.NewRequest(method, target, bytes.NewReader(mustJSON(t, body)))
 		r.Header.Set("Content-Type", "application/json")
 	}
-	r.Host = testHost
+	r.Host = ta.host
 	if c != nil {
 		if c.host != "" {
 			r.Host = c.host
@@ -290,6 +298,13 @@ func (ta *testAuth) passkeyLogin(t *testing.T, dev *authenticator) *httptest.Res
 
 func (ta *testAuth) loginOptions(t *testing.T) (token, passkey bool) {
 	t.Helper()
+	return ta.loginOptionsAt(t, testOrigin)
+}
+
+// loginOptionsAt reads the sign-in options and checks they name origin as
+// the passkey address.
+func (ta *testAuth) loginOptionsAt(t *testing.T, origin string) (token, passkey bool) {
+	t.Helper()
 	rec := ta.do(t, nil, "GET", "/login", nil)
 	var body struct {
 		Token, Passkey bool
@@ -298,8 +313,8 @@ func (ta *testAuth) loginOptions(t *testing.T) (token, passkey bool) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
 		t.Fatal(err)
 	}
-	if body.PasskeyOrigin != testOrigin {
-		t.Errorf("passkeyOrigin = %q, want %q", body.PasskeyOrigin, testOrigin)
+	if body.PasskeyOrigin != origin {
+		t.Errorf("passkeyOrigin = %q, want %q", body.PasskeyOrigin, origin)
 	}
 	return body.Token, body.Passkey
 }
@@ -617,7 +632,7 @@ func TestPendingResetStartsOnEnable(t *testing.T) {
 	a := New(token)
 	now := time.Date(2026, 11, 27, 12, 0, 0, 0, time.UTC)
 	a.now = func() time.Time { return now }
-	if err := a.EnablePasskeys(db, testPort, false); err != nil {
+	if err := a.EnablePasskeys(db, testPort, nil, false); err != nil {
 		t.Fatal(err)
 	}
 	if state, err := db.TokenState(ctx); err != nil || state != store.ResetTokenState(now.Add(ResetTokenTTL)) {
@@ -665,5 +680,57 @@ func TestResetNotice(t *testing.T) {
 	}
 	if at := notice(); at != nil {
 		t.Errorf("notice after dismiss = %v, want none", at)
+	}
+}
+
+// With an https public_url, passkeys also work on that host, each passkey
+// only on the site it was made on, and the cookie there is Secure.
+func TestPasskeysOnPublicURL(t *testing.T) {
+	public := &url.URL{Scheme: "https", Host: "tess.example.com"}
+	ta := newTestAuthAt(t, false, public)
+	ta.host = public.Host
+	if _, passkey := ta.loginOptionsAt(t, "https://tess.example.com"); passkey {
+		t.Error("passkey sign-in open before any passkey")
+	}
+	rec := ta.tokenLogin(t)
+	c := signedIn(t, rec)
+	if !c.cookie.Secure {
+		t.Error("cookie on the https public_url is not Secure")
+	}
+	dev := newAuthenticator(t)
+	dev.origin, dev.rpID = "https://tess.example.com", "tess.example.com"
+	if rec := ta.register(t, c, dev); rec.Code != http.StatusCreated {
+		t.Fatalf("register on the public URL = %d %s, want 201", rec.Code, rec.Body)
+	}
+	signedIn(t, ta.passkeyLogin(t, dev))
+
+	// On localhost the same passkey does not sign in: it belongs to the
+	// public site.
+	ta.host = testHost
+	if rec := ta.passkeyLogin(t, dev); rec.Code != http.StatusUnauthorized {
+		t.Errorf("public passkey on localhost = %d, want 401", rec.Code)
+	}
+	if _, passkey := ta.loginOptionsAt(t, testOrigin); !passkey {
+		t.Error("localhost should still offer passkey sign-in")
+	}
+	rec = ta.do(t, nil, "POST", "/login/passkey/begin", nil)
+	if rec.Code != http.StatusOK {
+		t.Errorf("passkey begin on localhost = %d, want 200", rec.Code)
+	}
+}
+
+func TestHTTPPublicURLHasNoPasskeys(t *testing.T) {
+	ta := newTestAuthAt(t, false, &url.URL{Scheme: "http", Host: "tess.tailnet:7777"})
+	ta.host = "tess.tailnet:7777"
+	if _, passkey := ta.loginOptionsAt(t, testOrigin); passkey {
+		t.Error("passkey sign-in open before any passkey")
+	}
+	c := signedIn(t, ta.tokenLogin(t))
+	if c.cookie.Secure {
+		t.Error("cookie on an http public_url is Secure")
+	}
+	if rec := ta.do(t, c, "POST", "/api/passkeys/register/begin", nil); rec.Code != http.StatusBadRequest ||
+		!strings.Contains(rec.Body.String(), testOrigin) {
+		t.Errorf("register on an http public_url = %d %s, want 400 naming %s", rec.Code, rec.Body, testOrigin)
 	}
 }

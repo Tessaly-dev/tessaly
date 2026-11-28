@@ -20,8 +20,9 @@ export type Daemon = {
 export const binary = path.resolve(import.meta.dirname, "../../bin/tess");
 
 // startDaemon runs bin/tess on port with a fresh TESSALY_HOME, a config that
-// defines the agents the tests use, and a repo with one commit.
-export async function startDaemon(port: number): Promise<Daemon> {
+// defines the agents the tests use, and a repo with one commit. extraConfig
+// goes at the top of config.toml.
+export async function startDaemon(port: number, extraConfig = ""): Promise<Daemon> {
   if (!existsSync(binary)) throw new Error(`${binary} not found. Run "make build" first.`);
   const root = mkdtempSync(path.join(tmpdir(), "tess-e2e-"));
   const home = path.join(root, "home");
@@ -31,7 +32,8 @@ export async function startDaemon(port: number): Promise<Daemon> {
   // simple interactive agent. No shell parses the prompt: it is "$1".
   writeFileSync(
     path.join(home, "config.toml"),
-    `[agents.echo]\ncommand = ["sh", "-c", "echo \\"task: $1\\"; exec cat", "echo-agent", "{prompt}"]\n` +
+    extraConfig +
+      `[agents.echo]\ncommand = ["sh", "-c", "echo \\"task: $1\\"; exec cat", "echo-agent", "{prompt}"]\n` +
       `resume = ["sh", "-c", "echo resumed; exec cat"]\n`,
     { mode: 0o600 },
   );

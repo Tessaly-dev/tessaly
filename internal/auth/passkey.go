@@ -12,6 +12,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -58,22 +59,20 @@ type ceremony struct {
 	expiry  time.Time
 }
 
-// passkeys holds what passkey sign-in needs.
+// passkeys holds what passkey sign-in needs on one site: localhost, or
+// the public_url host. A passkey belongs to the site it was made on.
 type passkeys struct {
 	store  *store.Store
 	rp     *webauthn.WebAuthn
-	host   string // "localhost:<port>"
-	origin string // "http://localhost:<port>"
+	host   string // "localhost:<port>" or the public host
+	origin string // "http://localhost:<port>" or the public URL
 }
 
-// EnablePasskeys turns on passkey sign-in, with passkeys kept in db and
-// accepted only from http://localhost:<port>. Once a passkey exists, token
-// sign-in turns off unless allowTokenLogin is true.
-func (a *Auth) EnablePasskeys(db *store.Store, port int, allowTokenLogin bool) error {
-	host := net.JoinHostPort(PasskeyHost, strconv.Itoa(port))
-	origin := "http://" + host
+// newSite sets up passkeys for one origin, such as http://localhost:7777.
+func newSite(db *store.Store, u *url.URL) (*passkeys, error) {
+	origin := u.Scheme + "://" + u.Host
 	rp, err := webauthn.New(&webauthn.Config{
-		RPID:          PasskeyHost,
+		RPID:          u.Hostname(),
 		RPDisplayName: "Tessaly",
 		RPOrigins:     []string{origin},
 		Timeouts: webauthn.TimeoutsConfig{
@@ -82,7 +81,30 @@ func (a *Auth) EnablePasskeys(db *store.Store, port int, allowTokenLogin bool) e
 		},
 	})
 	if err != nil {
-		return fmt.Errorf("passkeys: %w", err)
+		return nil, fmt.Errorf("passkeys: %w", err)
+	}
+	return &passkeys{store: db, rp: rp, host: u.Host, origin: origin}, nil
+}
+
+// EnablePasskeys turns on passkey sign-in, with passkeys kept in db. They
+// work at http://localhost:<port>, and also at public when it is an https
+// URL, because browsers allow passkeys only on https or localhost. Once a
+// passkey exists, token sign-in turns off unless allowTokenLogin is true.
+// public may be nil.
+func (a *Auth) EnablePasskeys(db *store.Store, port int, public *url.URL, allowTokenLogin bool) error {
+	local, err := newSite(db, &url.URL{Scheme: "http", Host: net.JoinHostPort(PasskeyHost, strconv.Itoa(port))})
+	if err != nil {
+		return err
+	}
+	sites := []*passkeys{local}
+	httpsHost := ""
+	if public != nil && public.Scheme == "https" {
+		site, err := newSite(db, public)
+		if err != nil {
+			return err
+		}
+		sites = append(sites, site)
+		httpsHost = public.Host
 	}
 	ctx := context.Background()
 	state, err := db.TokenState(ctx)
@@ -98,7 +120,8 @@ func (a *Auth) EnablePasskeys(db *store.Store, port int, allowTokenLogin bool) e
 	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	a.passkeys = &passkeys{store: db, rp: rp, host: host, origin: origin}
+	a.sites = sites
+	a.httpsHost = httpsHost
 	a.allowTokenLogin = allowTokenLogin
 	a.resetUntil, a.tokenUsed = parseTokenState(state)
 	return nil
@@ -171,7 +194,7 @@ func (a *Auth) LoginOptions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	origin := ""
-	if p := a.pk(); p != nil {
+	if p := a.siteFor(r); p != nil {
 		origin = p.origin
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
@@ -181,10 +204,32 @@ func (a *Auth) LoginOptions(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// pk returns the localhost site, which every caller that only needs the
+// store can use, or nil when passkeys are off.
 func (a *Auth) pk() *passkeys {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	return a.passkeys
+	if len(a.sites) == 0 {
+		return nil
+	}
+	return a.sites[0]
+}
+
+// siteFor returns the site r came to, or localhost when r came to an
+// address without passkeys, such as 127.0.0.1. It is nil when passkeys
+// are off.
+func (a *Auth) siteFor(r *http.Request) *passkeys {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	for _, p := range a.sites {
+		if strings.EqualFold(r.Host, p.host) {
+			return p
+		}
+	}
+	if len(a.sites) == 0 {
+		return nil
+	}
+	return a.sites[0]
 }
 
 func (a *Auth) hasPasskeys(ctx context.Context) (bool, error) {
@@ -231,10 +276,10 @@ func (a *Auth) takeToken(ctx context.Context, hasPasskeys bool) (bool, error) {
 	if singleUse {
 		a.resetUntil, a.tokenUsed = time.Time{}, true
 	}
-	p := a.passkeys
+	sites := a.sites
 	a.mu.Unlock()
-	if singleUse && p != nil {
-		return true, p.store.SetTokenState(ctx, "used")
+	if singleUse && len(sites) > 0 {
+		return true, sites[0].store.SetTokenState(ctx, "used")
 	}
 	return true, nil
 }
@@ -353,7 +398,7 @@ func (a *Auth) ListPasskeys(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"passkeys": out,
 		"fresh":    a.isFresh(sessionID(r)),
-		"origin":   p.origin,
+		"origin":   a.siteFor(r).origin,
 	})
 }
 
@@ -550,10 +595,10 @@ func (a *Auth) RequireFresh(next http.Handler) http.Handler {
 	})
 }
 
-// passkeyHost returns the passkey settings when r came to the passkey
-// address. Elsewhere it replies 400 with the address to use.
+// passkeyHost returns the passkey site r came to. Elsewhere it replies 400
+// with the address to use.
 func (a *Auth) passkeyHost(w http.ResponseWriter, r *http.Request) (*passkeys, bool) {
-	p := a.pk()
+	p := a.siteFor(r)
 	if p == nil {
 		writeError(w, http.StatusNotFound, "passkeys are off")
 		return nil, false

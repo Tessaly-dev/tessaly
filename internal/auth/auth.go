@@ -129,8 +129,11 @@ type Auth struct {
 	failed      int
 	failedSince time.Time
 
-	// passkeys is nil until EnablePasskeys.
-	passkeys        *passkeys
+	// sites is empty until EnablePasskeys. The first is localhost.
+	sites []*passkeys
+	// httpsHost is the host of an https public_url, where the session
+	// cookie is Secure even though the daemon serves plain HTTP.
+	httpsHost       string
 	allowTokenLogin bool
 	// resetUntil is set after tess auth reset: the new token works once,
 	// until then. tokenUsed means that token has signed in.
@@ -228,7 +231,7 @@ func (a *Auth) startSession(w http.ResponseWriter, r *http.Request, passkeyID in
 	a.sessions[sha256.Sum256([]byte(cookie))] = s
 	a.mu.Unlock()
 
-	http.SetCookie(w, sessionCookie(r, cookie, int(SessionTTL/time.Second)))
+	http.SetCookie(w, a.sessionCookie(r, cookie, int(SessionTTL/time.Second)))
 	writeJSON(w, http.StatusOK, struct {
 		Key string `json:"key"`
 	}{key})
@@ -276,22 +279,26 @@ func (a *Auth) Logout(w http.ResponseWriter, r *http.Request) {
 		delete(a.sessions, id)
 		a.mu.Unlock()
 	}
-	http.SetCookie(w, sessionCookie(r, "", -1))
+	http.SetCookie(w, a.sessionCookie(r, "", -1))
 	w.WriteHeader(http.StatusNoContent)
 }
 
 // sessionCookie builds the session cookie. A negative maxAge deletes it.
-func sessionCookie(r *http.Request, value string, maxAge int) *http.Cookie {
-	// #nosec G124 -- Secure is set whenever the request came over TLS. The
-	// daemon itself serves plain HTTP on 127.0.0.1, where some browsers drop
-	// Secure cookies.
+func (a *Auth) sessionCookie(r *http.Request, value string, maxAge int) *http.Cookie {
+	a.mu.Lock()
+	httpsHost := a.httpsHost
+	a.mu.Unlock()
+	// #nosec G124 -- Secure is set whenever the request came over TLS, here
+	// or at the reverse proxy in front of an https public_url. The daemon
+	// itself serves plain HTTP on 127.0.0.1, where some browsers drop Secure
+	// cookies.
 	return &http.Cookie{
 		Name:     CookieName,
 		Value:    value,
 		Path:     "/",
 		MaxAge:   maxAge,
 		HttpOnly: true,
-		Secure:   r.TLS != nil,
+		Secure:   r.TLS != nil || (httpsHost != "" && strings.EqualFold(r.Host, httpsHost)),
 		SameSite: http.SameSiteStrictMode,
 	}
 }

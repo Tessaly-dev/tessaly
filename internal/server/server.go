@@ -13,6 +13,7 @@ import (
 	"net"
 	"net/http"
 	"net/netip"
+	"net/url"
 	"path"
 	"strconv"
 	"strings"
@@ -34,7 +35,8 @@ const DefaultPort = 7777
 // loopback is the address Tessaly binds to by default. Remote access goes
 // through an SSH tunnel, a VPN or a reverse proxy. A container needs a wider
 // bind to publish its port, which "tess serve --listen" allows. The Host check
-// still only accepts 127.0.0.1 and localhost, whatever the bind.
+// still only accepts 127.0.0.1, localhost and the public_url host, whatever
+// the bind.
 const loopback = "127.0.0.1"
 
 // DefaultListen is the address "tess serve" binds to when none is given.
@@ -63,6 +65,9 @@ func IsLoopback(listen string) bool {
 type Config struct {
 	// Port is the port the server listens on. The Host check uses it.
 	Port int
+	// PublicURL is the public_url from config.toml, or nil. The Host check
+	// also accepts its host.
+	PublicURL *url.URL
 	// UI holds the built web UI. It may be empty when the UI has not been built.
 	UI fs.FS
 	// Auth checks sign-in for the API.
@@ -126,7 +131,7 @@ func Handler(cfg Config) http.Handler {
 	// CrossOriginProtection rejects state-changing requests that a browser
 	// sends from another site, which stops CSRF against the local API.
 	csrf := http.NewCrossOriginProtection()
-	return securityHeaders(hostCheck(cfg.Port, csrf.Handler(mux)))
+	return securityHeaders(hostCheck(cfg.Port, cfg.PublicURL, csrf.Handler(mux)))
 }
 
 // Serve serves h on ln until ctx ends, then shuts down within 5 seconds.
@@ -247,12 +252,16 @@ func hasDotSegment(name string) bool {
 
 // hostCheck rejects requests whose Host header is not this server. This blocks
 // DNS rebinding, where a web page on another site resolves its own name to
-// 127.0.0.1 to reach the local API.
-func hostCheck(port int, next http.Handler) http.Handler {
+// 127.0.0.1 to reach the local API. public, when set, is the one other host
+// it accepts.
+func hostCheck(port int, public *url.URL, next http.Handler) http.Handler {
 	p := strconv.Itoa(port)
 	allowed := map[string]bool{
 		net.JoinHostPort(loopback, p):    true,
 		net.JoinHostPort("localhost", p): true,
+	}
+	if public != nil {
+		allowed[strings.ToLower(public.Host)] = true
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !allowed[strings.ToLower(r.Host)] {
